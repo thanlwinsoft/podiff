@@ -6,6 +6,7 @@
     <property name="title" translatable="yes">PODiff</property>
     <property name="default_width">700</property>
     <property name="default_height">500</property>
+    <property name="icon">podiff.png</property>
     <signal name="destroy" handler="destroy"/>
     <signal name="delete_event" handler="delete_event"/>
     <child>
@@ -26,7 +27,6 @@
                     <child>
                       <object class="GtkImageMenuItem" id="newMenuItem">
                         <property name="label">gtk-new</property>
-                        <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
                       </object>
@@ -45,6 +45,7 @@
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="button_release_event" handler="saveMenuItem_button_release_event_cb"/>
                       </object>
                     </child>
                     <child>
@@ -138,6 +139,7 @@
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="button_release_event" handler="aboutMenuitem_button_release_event_cb"/>
                       </object>
                     </child>
                   </object>
@@ -160,7 +162,30 @@
           </packing>
         </child>
         <child>
-          <placeholder/>
+          <object class="GtkHBox" id="hbox3">
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkLabel" id="diffTitle0">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">left</property>
+              </object>
+              <packing>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="diffTitle1">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">right</property>
+              </object>
+              <packing>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="position">2</property>
+          </packing>
         </child>
         <child>
           <object class="GtkScrolledWindow" id="scrolledDiffWindow">
@@ -195,8 +220,7 @@
         <child>
           <object class="GtkLabel" id="statusLabel">
             <property name="visible">True</property>
-            <property name="xalign">0</property>
-            <property name="label" translatable="yes">label</property>
+            <property name="xalign">0.049999997019767761</property>
           </object>
           <packing>
             <property name="position">4</property>
@@ -267,6 +291,7 @@
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="wrap_mode">word</property>
+            <property name="buffer">textbuffer1</property>
           </object>
         </child>
       </object>
@@ -303,5 +328,16 @@
         </child>
       </object>
     </child>
+  </object>
+  <object class="GtkTextTagTable" id="texttagtable1"/>
+  <object class="GtkTextTag" id="texttag1">
+    <property name="background_gdk">#c32ad44c2c1d</property>
+    <property name="foreground_gdk">#000000000000</property>
+    <property name="font">Normal</property>
+    <property name="language">my-mm</property>
+  </object>
+  <object class="GtkTextBuffer" id="textbuffer1">
+    <property name="tag_table">texttagtable1</property>
+    <property name="text" translatable="yes">Test text</property>
   </object>
 </interface>
