@@ -37,6 +37,7 @@
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="button_release_event" handler="openMenuItem_button_release_event_cb"/>
                       </object>
                     </child>
                     <child>
@@ -162,28 +163,49 @@
           </packing>
         </child>
         <child>
-          <object class="GtkHBox" id="hbox3">
+          <object class="GtkHBox" id="titleHbox">
             <property name="visible">True</property>
             <child>
-              <object class="GtkLabel" id="diffTitle0">
+              <object class="GtkLabel" id="baseTitle">
                 <property name="visible">True</property>
-                <property name="label" translatable="yes">left</property>
+                <property name="ellipsize">start</property>
               </object>
               <packing>
                 <property name="position">0</property>
               </packing>
             </child>
             <child>
-              <object class="GtkLabel" id="diffTitle1">
+              <object class="GtkLabel" id="diffTitleA">
                 <property name="visible">True</property>
-                <property name="label" translatable="yes">right</property>
+                <property name="label" translatable="yes">left</property>
+                <property name="ellipsize">start</property>
               </object>
               <packing>
                 <property name="position">1</property>
               </packing>
             </child>
+            <child>
+              <object class="GtkLabel" id="diffTitleB">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">right</property>
+                <property name="ellipsize">start</property>
+              </object>
+              <packing>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="mergeTitle">
+                <property name="visible">True</property>
+                <property name="ellipsize">start</property>
+              </object>
+              <packing>
+                <property name="position">3</property>
+              </packing>
+            </child>
           </object>
           <packing>
+            <property name="expand">False</property>
             <property name="position">2</property>
           </packing>
         </child>
@@ -218,11 +240,12 @@
           </packing>
         </child>
         <child>
-          <object class="GtkLabel" id="statusLabel">
+          <object class="GtkStatusbar" id="statusbar">
             <property name="visible">True</property>
-            <property name="xalign">0.049999997019767761</property>
+            <property name="spacing">2</property>
           </object>
           <packing>
+            <property name="expand">False</property>
             <property name="position">4</property>
           </packing>
         </child>
@@ -339,5 +362,224 @@
   <object class="GtkTextBuffer" id="textbuffer1">
     <property name="tag_table">texttagtable1</property>
     <property name="text" translatable="yes">Test text</property>
+  </object>
+  <object class="GtkDialog" id="openDialog">
+    <property name="border_width">5</property>
+    <property name="title" translatable="yes">Open Files to Compare</property>
+    <property name="default_width">400</property>
+    <property name="icon">podiff.png</property>
+    <property name="type_hint">normal</property>
+    <property name="has_separator">False</property>
+    <child internal-child="vbox">
+      <object class="GtkVBox" id="dialog-vbox1">
+        <property name="visible">True</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child>
+          <object class="GtkHBox" id="hbox4">
+            <property name="visible">True</property>
+            <child>
+              <object class="GtkRadioButton" id="radiobuttonDiff">
+                <property name="label" translatable="yes">Diff</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">False</property>
+                <property name="draw_indicator">True</property>
+                <property name="group">radiobuttonMerge</property>
+                <signal name="toggled" handler="radiobuttonDiff_toggled_cb"/>
+              </object>
+              <packing>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkRadioButton" id="radiobuttonMerge">
+                <property name="label" translatable="yes">Merge</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">False</property>
+                <property name="active">True</property>
+                <property name="draw_indicator">True</property>
+                <signal name="toggled" handler="radiobuttonMerge_toggled_cb"/>
+              </object>
+              <packing>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkFrame" id="openFilesFrame">
+            <property name="visible">True</property>
+            <property name="label_xalign">0</property>
+            <property name="shadow_type">none</property>
+            <child>
+              <object class="GtkAlignment" id="alignment3">
+                <property name="visible">True</property>
+                <property name="left_padding">12</property>
+                <child>
+                  <object class="GtkTable" id="table1">
+                    <property name="visible">True</property>
+                    <property name="n_rows">4</property>
+                    <property name="n_columns">2</property>
+                    <property name="column_spacing">5</property>
+                    <child>
+                      <object class="GtkLabel" id="baseFileLabel">
+                        <property name="visible">True</property>
+                        <property name="xalign">0.99000000953674316</property>
+                        <property name="label" translatable="yes">Base</property>
+                        <property name="justify">center</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkFileChooserButton" id="filechooserbuttonBase">
+                        <property name="width_request">300</property>
+                        <property name="visible">True</property>
+                        <property name="title" translatable="yes">Select Base File</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="right_attach">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="fileALabel">
+                        <property name="visible">True</property>
+                        <property name="xalign">0.99000000953674316</property>
+                        <property name="label" translatable="yes">File A</property>
+                        <property name="justify">right</property>
+                      </object>
+                      <packing>
+                        <property name="top_attach">1</property>
+                        <property name="bottom_attach">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="fileBLabel">
+                        <property name="visible">True</property>
+                        <property name="xalign">0.99000000953674316</property>
+                        <property name="label" translatable="yes">File B</property>
+                        <property name="justify">right</property>
+                      </object>
+                      <packing>
+                        <property name="top_attach">2</property>
+                        <property name="bottom_attach">3</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="mergeFileLabel">
+                        <property name="visible">True</property>
+                        <property name="xalign">0.99000000953674316</property>
+                        <property name="label" translatable="yes">Merge result</property>
+                        <property name="justify">right</property>
+                      </object>
+                      <packing>
+                        <property name="top_attach">3</property>
+                        <property name="bottom_attach">4</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFileChooserButton" id="filechooserbuttonA">
+                        <property name="width_request">300</property>
+                        <property name="visible">True</property>
+                        <property name="title" translatable="yes">Select File A</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="right_attach">2</property>
+                        <property name="top_attach">1</property>
+                        <property name="bottom_attach">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFileChooserButton" id="filechooserbuttonB">
+                        <property name="visible">True</property>
+                        <property name="title" translatable="yes">Select File B</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="right_attach">2</property>
+                        <property name="top_attach">2</property>
+                        <property name="bottom_attach">3</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkFileChooserButton" id="filechooserbuttonMerge">
+                        <property name="visible">True</property>
+                        <property name="title" translatable="yes">Select Merge Result File</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="right_attach">2</property>
+                        <property name="top_attach">3</property>
+                        <property name="bottom_attach">4</property>
+                      </packing>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child type="label">
+              <object class="GtkLabel" id="label1">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">&lt;b&gt;Files to compare&lt;/b&gt;</property>
+                <property name="use_markup">True</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child internal-child="action_area">
+          <object class="GtkHButtonBox" id="dialog-action_area1">
+            <property name="visible">True</property>
+            <property name="layout_style">end</property>
+            <child>
+              <object class="GtkButton" id="openOkButton">
+                <property name="label">gtk-ok</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <signal name="button_release_event" handler="openOkButton_button_release_event_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="openCancelButton">
+                <property name="label">gtk-cancel</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <signal name="button_release_event" handler="openCancelButton_button_release_event_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="pack_type">end</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+    <action-widgets>
+      <action-widget response="1">openOkButton</action-widget>
+      <action-widget response="-1">openCancelButton</action-widget>
+    </action-widgets>
   </object>
 </interface>

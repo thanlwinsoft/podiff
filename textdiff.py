@@ -18,56 +18,72 @@
 
 import sys
 import math
+import unicodedata
 
-def find_matches(a, b, min_match=1):
+def find_matches(a, b, min_match=0):
 	"""Find the segments of text which are common between a and b.
 
-The common segments are given as a list of tupples: (aOffset, bOffset, length)
+The common segments are given as a list of tupples: (aOffset, b_offset, length)
 min_match can be used to speed up the search but will not show areas with less than min_match
 characters in common."""
-	a_len = len(a)
-	b_len = len(b)
+	mdict = dict()
 	cf = []
-	divisor = 10
-	first_pass_min = int(min(len(a),len(b)) / divisor)
-	if (first_pass_min < 1): first_pass_min = 1
-	matches = find_match_lists(a, b, 0, 0, 0, first_pass_min)
-	print matches
-	while (first_pass_min > min_match) :
-		divisor *= 5
-		first_pass_min = int(min(len(a),len(b)) / divisor)
-		if (first_pass_min < 1): first_pass_min = 1
-		matches = find_match_lists(a, b, 0, 0, matches[0], first_pass_min)
-		print matches
+	if (min_match == 0) :
+		min_match = min(len(a), len(b))/10
+	matches = find_match_lists(a, b, 0, 0, mdict, min_match)
 	mList = matches
 	while (len(mList) > 1) :
 		cf.append(mList[1][0])
 		mList = mList[1][1]
 	return cf
 	
+def is_mark(c) :
+	cat = unicodedata.category(c)
+	return cat[0] == 'M'
+
+def find_cluster_bounds(a, i, j) :
+	# move start to a non-mark
+	while(i < len(a) and is_mark(a[i])):
+		i+= 1
+	if (j <= i): j = i + 1
+	while (j < len(a) and is_mark(a[j])):
+		j+= 1
+	return (i, j)
+
 def find_match(a, b, aStart, bStart, min_match=1):
 	"""Find a match common to a and b starting at aStart, bStart"""
 	match_len = min_match 
-	aPos = aStart
+	a_pos = aStart
+	a_end = min(a_pos + match_len, len(a))
 #	print aStart, bStart
-	bOffset = b.find(a[aPos:aPos+match_len], bStart)
-	while (bOffset == -1) :
-		aPos += 1
-		if (aPos+match_len > len(a)) : return None
-		bOffset = b.find(a[aPos:aPos+match_len], bStart)
+	(a_pos, a_end) = find_cluster_bounds(a, a_pos, a_end)
+	if (a_pos >= len(a)): return None
+	b_offset = b.find(a[a_pos:a_end], bStart)
+	while (b_offset == -1) :
+		a_pos += 1
+		a_end = min(a_pos + match_len, len(a))
+		(a_pos, a_end) = find_cluster_bounds(a, a_pos, a_end)
+		if (a_pos >= len(a)) : return None
+		b_offset = b.find(a[a_pos:a_end], bStart)
 	# found a match, now see how much it can be extended
-	while (aPos+match_len < len(a) and bOffset+match_len < len(b) and
-			a[aPos+match_len] == b[bOffset+match_len]) : match_len += 1
-	return (aPos, bOffset, match_len)
+	while (a_pos+match_len < len(a) and b_offset+match_len < len(b) and
+			a[a_pos+match_len] == b[b_offset+match_len]) :
+		if (not is_mark(a[a_pos+match_len])) : a_end = a_pos+match_len
+		match_len += 1
+	# check we haven't stopped mid-cluster
+	if ((a_pos+match_len < len(a) and is_mark(a[a_pos+match_len])) or
+		(b_offset+match_len < len(b) and is_mark(b[b_offset+match_len]))):
+		match_len = a_end - a_pos
+	return (a_pos, b_offset, match_len)
 
-def find_match_lists(a, b, aStart, bStart, min_combined, min_match=1):
+def find_match_lists(a, b, aStart, bStart, mdict, min_match=1):
 	"""Create a tree of possible matches.
 Returns a list, first element is length of longest match
 next element contains list of tupples of best match.
 """
 	matches = [0]
 	i = 0
-	longest_match = min_combined
+	longest_match = 0
 	longest_index = -1
 	while (aStart+min_match < len(a)):
 		match = find_match(a, b, aStart, bStart, min_match)
@@ -76,11 +92,15 @@ next element contains list of tupples of best match.
 			if (len(b) - match[1] < longest_match) :
 				aStart+=1
 				continue
-			min_combined_match = longest_match - match[2]
-			if (min_combined_match < 0) :
-				min_combined_match = 0
 			i+= 1
-			match_list = find_match_lists(a, b, match[0] + match[2], match[1] + match[2], min_combined_match, min_match)
+			aOffset = match[0] + match[2]
+			b_offset = match[1] + match[2]
+			key = (aOffset, b_offset)
+			if key in dict(mdict):
+				match_list = mdict[key]
+			else:
+				match_list = find_match_lists(a, b, aOffset, b_offset, mdict, min_match)
+				mdict[key] = match_list
 			matches.append([match, match_list])
 			combined_match_len = match[2] + matches[i][1][0]
 			if combined_match_len > longest_match : 
@@ -121,11 +141,15 @@ def markup_deltas(a, b, common, delta_prefix='[', delta_suffix=']') :
 if __name__ == "__main__":
 	if (len(sys.argv) >= 3) :
 		min_match = 1
+		a = unicode(sys.argv[1], 'utf-8')
+		b = unicode(sys.argv[2], 'utf-8')
+		assert(isinstance(a, unicode))
+		assert(isinstance(b, unicode))		
 		if (len(sys.argv) >= 4) : min_match = int(sys.argv[3])
 #		print find_matches(sys.argv[1], sys.argv[2], 0, 0, min_match)
-		common = find_matches(sys.argv[1], sys.argv[2], min_match)
+		common = find_matches(a, b, min_match)
 		print common
-		out = markup_deltas(sys.argv[1], sys.argv[2], common)
+		out = markup_deltas(a, b, common)
 		print out[0], '\n', out[1]
 
 
