@@ -86,10 +86,10 @@ class PODiff(object) :
                 else : to_side = Side.RIGHT
         to_unit = self.stores[to_side].findunit(from_unit.source)
         if (to_unit is None) :
-            if (isinstance(tounit, translate.storage.pypo.pounit)):
+            if (isinstance(from_unit, translate.storage.pypo.pounit)):
                 to_unit = translate.storage.pypo.pounit(from_unit.source)
             else :
-                if (isinstance (to_unit, translate.storage.pypo.xliffunit)) :
+                if (isinstance (from_unit, translate.storage.pypo.xliffunit)) :
                     to_unit = translate.storage.pypo.xliffunit(from_unit.source)
                 else : raise Exception("Unsupported unit type:" + to_unit.__class__)
             self.stores[to_side].addunit(to_unit)
@@ -110,7 +110,16 @@ class PODiff(object) :
         for loc in from_unit.getlocations() :
             to_unit.addlocation(loc)
         self.dirty[to_side] = True
-        self.show_side(to_side, from_row, to_unit, None, True)
+        if to_side < Side.MERGE :
+            state = UnitState.MODE_DIFF
+        else :
+            state = UnitState.MODE_MERGE | UnitState.RESOLVED
+            if from_row in self.unresolved :
+                self.unresolved.remove(from_row)
+                msg = "{0} unresolved".format(len(self.unresolved))
+                self.show_status(msg)
+        
+        self.show_side(to_side, from_row, to_unit, None, True, state)
 
     def merge(self, base, a, b, merge) :
         self.clear()
@@ -235,5 +244,6 @@ class PODiff(object) :
                 row+=1
         self.dirty[Side.MERGE] = True
         self.on_dirty()
-
+        msg = "{0} unresolved".format(len(self.unresolved))
+        self.show_status(msg)
         

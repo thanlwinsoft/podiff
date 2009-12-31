@@ -156,9 +156,51 @@
         <child>
           <object class="GtkToolbar" id="mainToolbar">
             <property name="visible">True</property>
+            <child>
+              <object class="GtkToolButton" id="toolbuttonSave">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">toolbutton1</property>
+                <property name="use_underline">True</property>
+                <property name="stock_id">gtk-save</property>
+                <signal name="clicked" handler="toolbuttonSave_clicked_cb"/>
+                <signal name="button_release_event" handler="toolbuttonSave_button_release_event_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToolButton" id="toolbuttonOpen">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">toolbutton1</property>
+                <property name="use_underline">True</property>
+                <property name="stock_id">gtk-open</property>
+                <signal name="clicked" handler="toolbuttonOpen_clicked_cb"/>
+                <signal name="button_release_event" handler="toolbuttonOpen_button_release_event_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToggleToolButton" id="toolbuttonFilterResolved">
+                <property name="visible">True</property>
+                <property name="label" translatable="yes">Resolved</property>
+                <property name="use_underline">True</property>
+                <property name="icon_widget">resolveImage</property>
+                <signal name="toggled" handler="toolbuttonFilterResolved_toggled_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
           </object>
           <packing>
             <property name="expand">False</property>
+            <property name="fill">False</property>
             <property name="position">1</property>
           </packing>
         </child>
@@ -314,7 +356,6 @@
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="wrap_mode">word</property>
-            <property name="buffer">textbuffer1</property>
           </object>
         </child>
       </object>
@@ -351,17 +392,6 @@
         </child>
       </object>
     </child>
-  </object>
-  <object class="GtkTextTagTable" id="texttagtable1"/>
-  <object class="GtkTextTag" id="texttag1">
-    <property name="background_gdk">#c32ad44c2c1d</property>
-    <property name="foreground_gdk">#000000000000</property>
-    <property name="font">Normal</property>
-    <property name="language">my-mm</property>
-  </object>
-  <object class="GtkTextBuffer" id="textbuffer1">
-    <property name="tag_table">texttagtable1</property>
-    <property name="text" translatable="yes">Test text</property>
   </object>
   <object class="GtkDialog" id="openDialog">
     <property name="border_width">5</property>
@@ -581,5 +611,9 @@
       <action-widget response="1">openOkButton</action-widget>
       <action-widget response="-1">openCancelButton</action-widget>
     </action-widgets>
+  </object>
+  <object class="GtkImage" id="resolveImage">
+    <property name="visible">True</property>
+    <property name="pixbuf">resolve.png</property>
   </object>
 </interface>

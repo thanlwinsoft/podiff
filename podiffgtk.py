@@ -225,6 +225,9 @@ class PoDiffGtk (podiff.PODiff):
         gtk.main_quit()
     
     def show_side(self, side, row, unit, cf_unit = None, modified = False, state=0) :
+        if (side,row) in self.unit_dict:
+            self.diff_table.remove(self.unit_dict[(side, row)].frame)
+            del self.unit_dict[(side, row)]
         diff = PoUnitGtk(side, state)
         self.unit_dict[(side, row)] = diff
         self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row, bottom_attach=row+1)
@@ -257,6 +260,9 @@ class PoDiffGtk (podiff.PODiff):
             t.set_tooltip_text(text)
         
     def saveMenuItem_button_release_event_cb(self, widget, data=None):
+        self.saveAll()
+
+    def saveAll(self) :
         for i in range(len(self.dirty)) :
             if self.dirty[i] :
                 self.stores[i].save()
@@ -264,6 +270,9 @@ class PoDiffGtk (podiff.PODiff):
         self.on_dirty()
     
     def openMenuItem_button_release_event_cb(self, widget, data=None):
+        self.openFileDialog()
+
+    def openFileDialog(self) :
         dialog = self.builder.get_object("openDialog")
         response = dialog.run()
         dialog.hide()
@@ -356,6 +365,30 @@ http://www.gnu.org/licenses/""")
             self.diff_table.remove(child)
         for i in range(len(self.dirty)) :
             self.dirty[i] = False
+
+    def toolbuttonOpen_clicked_cb(self, button, user=None) :
+        self.openFileDialog()
+
+    def toolbuttonOpen_button_release_event_cb(self, button, user=None) :
+        self.openFileDialog()
+        
+    def toolbuttonSave_button_release_event_cb(self, button, user=None) :
+        self.saveAll()
+    
+    def toolbuttonSave_clicked_cb(self, button, user=None) :
+        self.saveAll()
+
+    def toolbuttonFilterResolved_toggled_cb(self, button, user=None) :
+        if len(self.stores) == 4 :
+            unresolved = set(self.unresolved)
+            if (button.get_active()) : 
+                for child in self.diff_table.get_children() :
+                    row = self.diff_table.child_get_property(child, "top-attach")
+                    if row not in unresolved:
+                        child.hide()
+            else :
+                for child in self.diff_table.get_children() :
+                    child.show()
 
 # main method
 if __name__ == "__main__":
