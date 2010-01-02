@@ -234,11 +234,11 @@ class PoDiffGtk (podiff.PODiff):
         diff.set_unit(unit, cf_unit, modified)
         diff.frame.show()
 
-    def show_left(self, row, unit, cf_unit = None, modified = False) :
-        self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified)
+    def show_left(self, row, unit, cf_unit = None, modified = False, state=0) :
+        self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified, state)
 
-    def show_right(self, row, unit, cf_unit = None, modified = False) :
-        self.show_side(podiff.Side.RIGHT, row, unit, cf_unit, modified)
+    def show_right(self, row, unit, cf_unit = None, modified = False, state=0) :
+        self.show_side(podiff.Side.RIGHT, row, unit, cf_unit, modified, state)
 
     def show_status(self, msg) :
         statusbar = self.builder.get_object("statusbar")
@@ -274,6 +274,18 @@ class PoDiffGtk (podiff.PODiff):
 
     def openFileDialog(self) :
         dialog = self.builder.get_object("openDialog")
+        if (len(self.stores) == 2) :
+            self.builder.get_object("radiobuttonDiff").set_active(True)
+            self.builder.get_object("filechooserbuttonA").set_filename(self.stores[podiff.Side.LEFT].filename)
+            self.builder.get_object("filechooserbuttonB").set_filename(self.stores[podiff.Side.RIGHT].filename)
+        else :
+            if (len(self.stores) == 4) :
+                self.builder.get_object("radiobuttonMerge").set_active(True)
+                self.builder.get_object("filechooserbuttonBase").set_filename(self.stores[podiff.Side.BASE].filename)
+                self.builder.get_object("filechooserbuttonA").set_filename(self.stores[podiff.Side.A].filename)
+                self.builder.get_object("filechooserbuttonB").set_filename(self.stores[podiff.Side.B].filename)
+                self.builder.get_object("filechooserbuttonMerge").set_filename(self.stores[Side.MERGE].filename)
+                
         response = dialog.run()
         dialog.hide()
         if (response > 0):
@@ -365,6 +377,7 @@ http://www.gnu.org/licenses/""")
             self.diff_table.remove(child)
         for i in range(len(self.dirty)) :
             self.dirty[i] = False
+        self.unit_dict = {}
 
     def toolbuttonOpen_clicked_cb(self, button, user=None) :
         self.openFileDialog()

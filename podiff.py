@@ -36,10 +36,26 @@ class UnitState :
     
 
 class PODiff(object) :
+    """Class to compare two translation files or merge two branches"""
     copy_notes = True
     show_resolved_merges = True
     def __init__(self) :
         self.dirty = [False, False]
+
+    def find_unit(self, side, unit) :
+        units = self.stores[side].findunits(unit.source)
+        if units is None or (len(units) == 0) : return None
+        # if (len(units) < 2) : return units[0]
+        # multiple units, try to find one with the same 
+        ctxt = unit.getcontext()
+        for u in units:
+            if u.getcontext() == ctxt :
+                return u
+        return None
+    
+    #TODO
+    def get_unit_subtarget(self, side, unit, plural) :
+        pass
 
     def diff(self, a, b) :
         self.clear()
@@ -53,29 +69,29 @@ class PODiff(object) :
         bOnly = 0
         # iterate over left hand side
         for i in self.stores[0].unit_iter():
-            bUnit = self.stores[1].findunit(i.source)
+            bUnit = self.find_unit(1, i)
+            state = UnitState.MODE_DIFF
             if (bUnit is not None) :
                 if (i.gettarget() != bUnit.gettarget()): # a and b different
-                    self.show_left(row, i, bUnit, False)
-                    self.show_right(row, bUnit, i, False)
+                    self.show_left(row, i, bUnit, False, state)
+                    self.show_right(row, bUnit, i, False, state)
                     row+=1
                     alternateTranslations+=1
             else : # a only
-                self.show_left(row, i)
+                self.show_left(row, i, None, False, state)
                 row+=1
                 aOnly+=1
+            
 
         for i in self.stores[1].unit_iter():
-            a = self.stores[0].findunit(i.source)
+            a = self.find_unit(0, i)
             if a is None : # b only
-                self.show_right(row, i)
+                self.show_right(row, i, None, False, state)
                 row+=1
                 bOnly+=1
         msg = "{0} differences, {1} only in a, {2} only in b".format(alternateTranslations, aOnly, bOnly)
         self.show_status(msg)
-        print >> sys.stderr, "" + str(alternateTranslations) + " differences"
-        print >> sys.stderr, "" + str(aOnly) + " only in a"
-        print >> sys.stderr, "" + str(bOnly) + " only in b"
+        print >> sys.stderr, msg
         
     def merge_from(self, from_side, from_row, from_unit, to_side=None) :
         if to_side is None:
@@ -84,7 +100,7 @@ class PODiff(object) :
             else :
                 if from_side == Side.RIGHT : to_side = Side.LEFT
                 else : to_side = Side.RIGHT
-        to_unit = self.stores[to_side].findunit(from_unit.source)
+        to_unit = self.find_unit(to_side, from_unit)
         if (to_unit is None) :
             if (isinstance(from_unit, translate.storage.pypo.pounit)):
                 to_unit = translate.storage.pypo.pounit(from_unit.source)
@@ -96,17 +112,21 @@ class PODiff(object) :
 
         # this might need to be customized for each supported type
         if (self.copy_notes) :
-            to_unit.removenotes()
+            # to_unit.removenotes()
             for origin in ("translator", 'developer', 'programmer', 'source code') :
                 new_notes = []
+                old_notes = to_unit.getnotes(origin).split('\n')
                 notes = from_unit.getnotes(origin).split('\n')
                 for note in notes :
-                    new_notes.append(note)
+                    if note not in old_notes :
+                        new_notes.append(note)
                 to_unit.addnote('\n'.join(new_notes), origin)
 
         if (hasattr(from_unit, "msgctxt")) :
             to_unit.msgctxt = from_unit.msgctxt
         to_unit.settarget(from_unit.gettarget())
+        if (callable(to_unit.markfuzzy)) :
+            to_unit.markfuzzy(False)
         for loc in from_unit.getlocations() :
             to_unit.addlocation(loc)
         self.dirty[to_side] = True
@@ -131,25 +151,39 @@ class PODiff(object) :
         mergeStore = object.__new__(self.stores[0].__class__, merge, "UTF-8")
         mergeStore.__init__(merge, "UTF-8")
         mergeStore.filename = merge
+        new_headers = self.stores[Side.BASE].parseheader()
+        new_headers['add'] = True
+        mergeStore.updateheader(**new_headers)
         self.stores.append(mergeStore)
-        print str(self.stores[Side.MERGE])
+        #print str(self.stores[Side.MERGE])
         self.set_merge_titles(base, a, b, merge)
         overwrite = True
         comments = True
+        resolved_from_a = 0
+        resolved_from_b = 0
+        new_in_a = 0
+        new_in_b = 0
+        removed = 0
         row = 0
         for base_unit in self.stores[Side.BASE].unit_iter():
-            a_unit = self.stores[Side.A].findunit(base_unit.source)
-            b_unit = self.stores[Side.B].findunit(base_unit.source)
+            a_unit = self.find_unit(Side.A, base_unit)
+            b_unit = self.find_unit(Side.B, base_unit)
             if (a_unit is None) : 
                 if (b_unit is None) :
                     # deleted in both, so don't merge into result
+                    state = UnitState.RESOLVED | UnitState.MODE_MERGE
+                    self.show_side(Side.BASE, row, base_unit, None, False, state)
+                    removed += 1
+                    row +=1
                     pass
                 else :
                     if (base_unit.gettarget() == b_unit.gettarget()) :
                         state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                        removed += 1
                     else :
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                         self.unresolved.append(row)
+                        removed += 1
                     self.show_side(Side.BASE, row, base_unit, None, False, state)
                     self.show_side(Side.B, row, b_unit, base_unit, False, state)
                     row+=1
@@ -157,9 +191,11 @@ class PODiff(object) :
                 if (b_unit is None) :
                     if (base_unit.gettarget() == a_unit.gettarget()) :
                         state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                        removed += 1
                     else :
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                         self.unresolved.append(row)
+                        removed += 1
                     self.show_side(Side.BASE, row, base_unit, None, False, state)
                     self.show_side(Side.A, row, a_unit, base_unit, False, state)
                     row+=1
@@ -169,11 +205,16 @@ class PODiff(object) :
                         if (base_unit.gettarget() == b_unit.gettarget()) :
                             # unchanged in both, so silently merge
                             merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
+                            if (base_unit.getcontext() is not None) :
+                                merge_unit.msgctxt = base_unit.msgctxt
                             merge_unit.merge(base_unit, overwrite, comments)
                         else :
                             # only b was modified, so use b's text
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                            resolved_from_b += 1
                             merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
+                            if (base_unit.getcontext() is not None) :
+                                merge_unit.msgctxt = base_unit.msgctxt
                             merge_unit.merge(b_unit, overwrite, comments)
                             self.show_side(Side.BASE, row, base_unit, None, False, state)
                             self.show_side(Side.A, row, a_unit, base_unit, False, state)
@@ -186,7 +227,10 @@ class PODiff(object) :
                             a_unit.gettarget() == b_unit.gettarget()) :
                             # b unchanged or the same as a, so use a
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                            resolved_from_a += 1
                             merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
+                            if (base_unit.getcontext() is not None) :
+                                merge_unit.msgctxt = base_unit.msgctxt
                             merge_unit.merge(a_unit, overwrite, comments)
                             self.show_side(Side.BASE, row, base_unit, None, False, state)
                             self.show_side(Side.A, row, a_unit, base_unit, False, state)
@@ -198,6 +242,8 @@ class PODiff(object) :
                             state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                             self.unresolved.append(row)
                             merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
+                            if (base_unit.getcontext() is not None) :
+                                merge_unit.msgctxt = base_unit.msgctxt
                             merge_unit.merge(base_unit, overwrite, comments)
                             self.show_side(Side.BASE, row, base_unit, None, False, state)
                             self.show_side(Side.A, row, a_unit, base_unit, False, state)
@@ -206,24 +252,33 @@ class PODiff(object) :
                             row+=1
         # now find new entries in a
         for a_unit in self.stores[Side.A].unit_iter():
-            base_unit = self.stores[Side.BASE].findunit(a_unit.source)
+            base_unit = self.find_unit(Side.BASE, a_unit)
             if base_unit is not None : continue
-            b_unit = self.stores[Side.B].findunit(a_unit.source)
+            b_unit = self.find_unit(Side.B, a_unit)
             if (b_unit is None or b_unit.gettarget() == a_unit.gettarget()):
                 # use a
                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                 merge_unit = self.stores[Side.MERGE].addsourceunit(a_unit.source)
+                if (a_unit.getcontext() is not None) :
+                    merge_unit.msgctxt = a_unit.msgctxt
                 merge_unit.merge(a_unit, overwrite, comments)
                 self.show_side(Side.A, row, a_unit, None, False, state)
+                resolved_from_a += 1
+                new_in_a += 1
                 if (b_unit is not None) :
                     self.show_side(Side.B, row, b_unit, None, False, state)
+                    new_in_b += 1
                 self.show_side(Side.MERGE, row, merge_unit, None, False, state)
                 row+=1
             else :
                 # new entry is also in b
                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
+                new_in_a += 1
+                new_in_b += 1
                 self.unresolved.append(row)
                 merge_unit = self.stores[Side.MERGE].addsourceunit(a_unit.source)
+                if (a_unit.getcontext() is not None) :
+                    merge_unit.msgctxt = a_unit.msgctxt
                 # don't know what to merge yet
                 self.show_side(Side.A, row, a_unit, b_unit, False, state)
                 self.show_side(Side.B, row, b_unit, a_unit, False, state)
@@ -231,19 +286,23 @@ class PODiff(object) :
                 row+=1
         # find new entries only in b
         for b_unit in self.stores[Side.B].unit_iter():
-            base_unit = self.stores[Side.BASE].findunit(b_unit.source)
+            base_unit = self.find_unit(Side.BASE, b_unit)
             if base_unit is not None : continue
-            a_unit = self.stores[Side.A].findunit(b_unit.source)
+            a_unit = self.find_unit(Side.A, b_unit)
             if (a_unit is None):
                 # use b
                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                resolved_from_b += 1
+                new_in_b += 1
                 merge_unit = self.stores[Side.MERGE].addsourceunit(b_unit.source)
+                if (b_unit.getcontext() is not None) :
+                    merge_unit.msgctxt = b_unit.msgctxt
                 merge_unit.merge(b_unit, overwrite, comments)
                 self.show_side(Side.B, row, b_unit, None, False, state)
                 self.show_side(Side.MERGE, row, merge_unit, None, False, state)
                 row+=1
         self.dirty[Side.MERGE] = True
         self.on_dirty()
-        msg = "{0} unresolved".format(len(self.unresolved))
+        msg = "{0} unresolved; {1} resolved from A; {2} resolved from B; {3} new in A; {4} new in B; {5} removed".format(len(self.unresolved), resolved_from_a, resolved_from_b, new_in_a, new_in_b, removed)
         self.show_status(msg)
         
