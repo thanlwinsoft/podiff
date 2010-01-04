@@ -32,6 +32,7 @@ class PoUnitGtk(object) :
     def __init__(self, side, state):
         self.side = side
         self.frame = gtk.Frame()
+        self.frame.connect("scroll-event", self.po_diff.unitVscrollbar_scroll_event_cb)
         self.vbox = gtk.VBox(False, 2)
         self.title_box = gtk.HBox()
         self.copy_button = gtk.Button()
@@ -191,6 +192,7 @@ class PoUnitGtk(object) :
 class PoDiffGtk (podiff.PODiff):
     version = "0.0.1"
     title_ids = ["baseTitle","diffTitleA", "diffTitleB", "mergeTitle"]
+    UNITS_PER_PAGE = 5
     def __init__(self):
         podiff.PODiff.__init__(self)
         self.builder = gtk.Builder()
@@ -202,6 +204,7 @@ class PoDiffGtk (podiff.PODiff):
         self.win.show()    
         PoUnitGtk.po_diff = self
         self.dirty = [False, False, False, False]
+        self.prev_page = 0
 
     def main(self):
         gtk.main()
@@ -223,16 +226,126 @@ class PoDiffGtk (podiff.PODiff):
 
     def quitMenuItem_button_release_event_cb(self, widget, data=None):
         gtk.main_quit()
+        
+    def page_range(self, value=None) :
+        sb = self.builder.get_object("unitVscrollbar")
+        if value is None : value = int(sb.get_value())
+        min_visible_row = value
+        max_visible_row = value + PoDiffGtk.UNITS_PER_PAGE
+        if (max_visible_row > sb.get_adjustment().get_upper()):
+            max_visible_row = int(sb.get_adjustment().get_upper())
+            min_visible_row = max(0, max_visible_row - PoDiffGtk.UNITS_PER_PAGE)
+        return (min_visible_row, max_visible_row)
     
     def show_side(self, side, row, unit, cf_unit = None, modified = False, state=0) :
+        shown = False
         if (side,row) in self.unit_dict:
             self.diff_table.remove(self.unit_dict[(side, row)].frame)
+            shown = self.unit_dict[(side, row)].frame
             del self.unit_dict[(side, row)]
         diff = PoUnitGtk(side, state)
         self.unit_dict[(side, row)] = diff
         self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row, bottom_attach=row+1)
         diff.set_unit(unit, cf_unit, modified)
-        diff.frame.show()
+        sb = self.builder.get_object("unitVscrollbar")
+        min_visible_row, max_visible_row = self.page_range()
+        if self.builder.get_object("toolbuttonFilterResolved").get_active() :
+            if row in self.unresolved :
+                i = self.unresolved.index(row)
+                if (i >= min_visible_row and i < max_visible_row) :
+                    diff.frame.show()
+        else :
+            if (row >= min_visible_row and row < max_visible_row) :
+                    diff.frame.show()
+        # if (state & podiff.UnitState.AMBIGUOUS) :
+        # diff.frame.show()
+
+    def set_total_units(self, row_count) :
+        self.unit_count = row_count
+        self.hide_units()
+        sb = self.builder.get_object("unitVscrollbar")
+        sb.set_adjustment(gtk.Adjustment(0, 0, row_count, 1, PoDiffGtk.UNITS_PER_PAGE, PoDiffGtk.UNITS_PER_PAGE))
+        #sb.set_increments(1, PoDiffGtk.UNITS_PER_PAGE)
+        #sb.set_range(0, row_count)
+        #sb.set_value(0)
+        self.show_units(0)
+    
+    def hide_units(self, filter_resolved = None) :
+        min_show, max_show = self.page_range(self.prev_page)
+        # print "hide ", min_show, max_show
+        if filter_resolved is None :
+            filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
+        if filter_resolved :
+            for i in range(min_show, max_show) :
+                row = self.unresolved[i]
+                for col in range(0,4) :
+                    key = (col, row)
+                    if key in self.unit_dict :
+                        self.unit_dict[(col, row)].frame.hide()
+        else :
+            for row in range(min_show, max_show) :
+                for col in range(0,4) :
+                    key = (col, row)
+                    if key in self.unit_dict :
+                        self.unit_dict[(col, row)].frame.hide()
+
+    def show_units(self, value) :
+        min_show, max_show = self.page_range(int(value))
+        # print "show ", min_show, max_show
+        filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
+        if filter_resolved :
+            for i in range(min_show, max_show) :
+                row = self.unresolved[i]
+                for col in range(0,4) :
+                    key = (col, row)
+                    if key in self.unit_dict :
+                        self.unit_dict[(col, row)].frame.show()
+        else :
+            for row in range(min_show, max_show) :
+                for col in range(0,4) :
+                    key = (col, row)
+                    if key in self.unit_dict :
+                        self.unit_dict[(col, row)].frame.show()
+        self.prev_page = value
+        return True
+    
+    # TODO remove
+    def _old_show_units(self, value) :
+        filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
+        if filter_resolved :
+            min_show = value
+            max_show = value + PoDiffGtk.UNITS_PER_PAGE
+            if (max_show >= len(self.unresolved)) :
+                max_show = len(self.unresolved)
+                min_show = max(0, len(self.unresolved) - PoDiffGtk.UNITS_PER_PAGE)
+            for child in self.diff_table.get_children() :
+                row = self.diff_table.child_get_property(child, "top-attach")
+                if (row in self.unresolved) :
+                    i = self.unresolved.index(row)
+                    if i >= min_show and i < max_show :
+                        child.show()
+                    else :
+                        child.hide()
+                else :
+                    child.hide()
+        else :
+            min_show = value
+            max_show = value + PoDiffGtk.UNITS_PER_PAGE
+            if (max_show >= self.unit_count) :
+                max_show = self.unit_count
+                min_show = max(0, self.unit_count - PoDiffGtk.UNITS_PER_PAGE)
+            for child in self.diff_table.get_children() :
+                row = self.diff_table.child_get_property(child, "top-attach")
+                if row >= min_show and row < max_show :
+                    child.show()
+                else :
+                    child.hide()
+        self.prev_page = value
+        return True
+
+    def unitVscrollbar_value_changed_cb(self, widget, data=None) :
+        self.hide_units()
+        return self.show_units(int(widget.get_value()))
 
     def show_left(self, row, unit, cf_unit = None, modified = False, state=0) :
         self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified, state)
@@ -373,11 +486,14 @@ http://www.gnu.org/licenses/""")
                 win.set_title(old_title[1:])
                 
     def clear(self) :
+        self.unit_count = 0
+        self.unresolved = []
         for child in self.diff_table.get_children() :
             self.diff_table.remove(child)
         for i in range(len(self.dirty)) :
             self.dirty[i] = False
         self.unit_dict = {}
+        self.builder.get_object("toolbuttonFilterResolved").set_active(False)
 
     def toolbuttonOpen_clicked_cb(self, button, user=None) :
         self.openFileDialog()
@@ -393,15 +509,36 @@ http://www.gnu.org/licenses/""")
 
     def toolbuttonFilterResolved_toggled_cb(self, button, user=None) :
         if len(self.stores) == 4 :
-            unresolved = set(self.unresolved)
             if (button.get_active()) : 
-                for child in self.diff_table.get_children() :
-                    row = self.diff_table.child_get_property(child, "top-attach")
-                    if row not in unresolved:
-                        child.hide()
+                self.hide_units(False)
+                sb = self.builder.get_object("unitVscrollbar")
+                sb.set_adjustment(gtk.Adjustment(0, 0, len(self.unresolved), 1, PoDiffGtk.UNITS_PER_PAGE, PoDiffGtk.UNITS_PER_PAGE))
+                self.show_units(0)
             else :
-                for child in self.diff_table.get_children() :
-                    child.show()
+                self.hide_units(True)
+                sb = self.builder.get_object("unitVscrollbar")
+                sb.set_adjustment(gtk.Adjustment(0, 0, self.unit_count, 1, PoDiffGtk.UNITS_PER_PAGE, PoDiffGtk.UNITS_PER_PAGE))
+                self.show_units(0)
+#        if len(self.stores) == 4 :
+#            unresolved = set(self.unresolved)
+#            if (button.get_active()) : 
+#                for child in self.diff_table.get_children() :
+#                    row = self.diff_table.child_get_property(child, "top-attach")
+#                    if row not in unresolved:
+#                        child.hide()
+#            else :
+#                for child in self.diff_table.get_children() :
+#                    child.show()
+    def unitVscrollbar_button_press_event_cb(self, widget, event, data=None) :
+        pass
+    
+    def unitVscrollbar_scroll_event_cb(self, widget, event, data=None) :
+        sb = self.builder.get_object("unitVscrollbar")
+        #print str(event)
+        if (event.direction == gtk.gdk.SCROLL_UP) : 
+            sb.set_value(sb.get_value() - sb.get_adjustment().get_step_increment())
+        if (event.direction & gtk.gdk.SCROLL_DOWN) : 
+            sb.set_value(sb.get_value() + sb.get_adjustment().get_step_increment())
 
 # main method
 if __name__ == "__main__":

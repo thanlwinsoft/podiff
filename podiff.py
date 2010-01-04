@@ -91,6 +91,7 @@ class PODiff(object) :
                 bOnly+=1
         msg = "{0} differences, {1} only in a, {2} only in b".format(alternateTranslations, aOnly, bOnly)
         self.show_status(msg)
+        self.set_total_units(row)
         print >> sys.stderr, msg
         
     def merge_from(self, from_side, from_row, from_unit, to_side=None) :
@@ -132,14 +133,15 @@ class PODiff(object) :
         self.dirty[to_side] = True
         if to_side < Side.MERGE :
             state = UnitState.MODE_DIFF
+            self.show_side(to_side, from_row, to_unit, None, True, state)
         else :
             state = UnitState.MODE_MERGE | UnitState.RESOLVED
+            # show it before we remove from the unresolved list
+            self.show_side(to_side, from_row, to_unit, None, True, state)
             if from_row in self.unresolved :
                 self.unresolved.remove(from_row)
                 msg = "{0} unresolved".format(len(self.unresolved))
                 self.show_status(msg)
-        
-        self.show_side(to_side, from_row, to_unit, None, True, state)
 
     def merge(self, base, a, b, merge) :
         self.clear()
@@ -305,4 +307,5 @@ class PODiff(object) :
         self.on_dirty()
         msg = "{0} unresolved; {1} resolved from A; {2} resolved from B; {3} new in A; {4} new in B; {5} removed".format(len(self.unresolved), resolved_from_a, resolved_from_b, new_in_a, new_in_b, removed)
         self.show_status(msg)
-        
+        self.set_total_units(row)
+       
