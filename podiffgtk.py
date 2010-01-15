@@ -22,10 +22,15 @@ import gtk
 import pango
 import sys
 import os.path
+import gettext
 import translate.storage.factory
 
 import podiff
 from textdiff import find_matches
+
+GETTEXT_DOMAIN='podiff'
+translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
+
 
 class PoUnitGtk(object) :
     """Displays a frame showing the contents of a translatable unit."""
@@ -43,8 +48,11 @@ class PoUnitGtk(object) :
         self.source = gtk.TextView()
         self.source.set_wrap_mode(gtk.WRAP_WORD)
         self.source_buffer = gtk.TextBuffer()
-        self.source_buffer.set_text("Source")
-        self.source.set_tooltip_text("Source")
+        self.source_buffer.set_text(_("Source"))
+        if (self.plural > 0) :
+            self.source.set_tooltip_text(_("Source [msgid_plural]"))
+        else :
+            self.source.set_tooltip_text(_("Source [msgid]"))
         self.source.set_buffer(self.source_buffer)
         self.source.set_editable(False)
         self.source.show()
@@ -62,13 +70,16 @@ class PoUnitGtk(object) :
         self.edit_tag.set_property("background-gdk", self.diff_colors[len(self.diff_colors) - 1])
         self.target_buffer.get_tag_table().add(self.edit_tag)
         self.target_buffer.set_text("Target")
-        self.target.set_tooltip_text("Target")
+        if (self.plural > 0) :
+            self.target.set_tooltip_text(_("Target [msgstr {0:d}]").format(self.plural))
+        else :
+            self.target.set_tooltip_text(_("Target [msgstr]"))
         self.target.set_buffer(self.target_buffer)
         self.target.show()
         self.context = gtk.TextView()
         self.context_buffer = gtk.TextBuffer()
-        self.context_buffer.set_text("Context")
-        self.context.set_tooltip_text("Context")
+        self.context_buffer.set_text(_("Context"))
+        self.context.set_tooltip_text(_("Context"))
         self.context.set_buffer(self.context_buffer)
         self.context.set_editable(False)
         self.context.show()
@@ -214,6 +225,7 @@ class PoDiffGtk (podiff.PODiff):
     def __init__(self):
         podiff.PODiff.__init__(self)
         self.builder = gtk.Builder()
+        self.builder.set_translation_domain(GETTEXT_DOMAIN)
         self.builder.add_from_file(os.path.dirname(__file__) + "/podiff.glade")
         self.builder.connect_signals(self)
         self.diff_table = self.builder.get_object("diffTable")
@@ -223,6 +235,8 @@ class PoDiffGtk (podiff.PODiff):
         PoUnitGtk.po_diff = self
         self.dirty = [False, False, False, False]
         self.prev_page = 0
+        self.stores = []
+        self.clear()
 
     def main(self):
         gtk.main()
@@ -230,13 +244,13 @@ class PoDiffGtk (podiff.PODiff):
     def delete_event(self, widget, event, data=None):
         if (sum(self.dirty)) :
             msg = gtk.MessageDialog(self.win, gtk.DIALOG_MODAL, gtk.MESSAGE_QUESTION,
-                gtk.BUTTONS_YES_NO, "Save changes?")
+                gtk.BUTTONS_YES_NO, _("Save changes?"))
             response = msg.run()
             if (response == gtk.RESPONSE_YES) :
                 for i in range(len(self.dirty)) :
                     if self.dirty[i] :                        
                         self.stores[i].save()
-                        print "Saved " + self.stores[i].filename
+                        print _("Saved {0}").format(self.stores[i].filename)
         return False
 
     def destroy(self, widget, data=None):
@@ -341,7 +355,15 @@ class PoDiffGtk (podiff.PODiff):
         statusbar = self.builder.get_object("statusbar")
         statusbar.pop(1)
         statusbar.push(1, msg)
-        
+    
+    def show_warning(self, msg) :
+        print >> sys.stderr, msg
+        msg_dialog = gtk.MessageDialog(self.win, gtk.DIALOG_MODAL, gtk.MESSAGE_WARNING,
+                gtk.BUTTONS_OK, msg)
+        response = msg_dialog.run()
+        if (response == gtk.RESPONSE_OK) :
+            msg_dialog.hide()
+
     def set_diff_titles(self, a, b) :
         t = self.builder.get_object("diffTitleA")
         t.set_text(a)
@@ -437,19 +459,19 @@ class PoDiffGtk (podiff.PODiff):
         icon = gtk.gdk.pixbuf_new_from_file("podiff.xpm")
         dialog.set_icon(icon)
         dialog.set_logo(icon)
-        dialog.set_name("podiffgtk")
-        dialog.set_license("""GNU General Public License 
+        dialog.set_name(_("podiffgtk"))
+        dialog.set_license(_("""GNU General Public License 
 as published by the Free Software Foundation; 
 either version 2 of the License, or (at your option) 
 any later version.
-http://www.gnu.org/licenses/""")
+http://www.gnu.org/licenses/"""))
         dialog.set_website("http://www.thanlwinsoft.org/")
         dialog.set_website_label("ThanLwinSoft.org")
         dialog.set_version(self.version)
         dialog.set_copyright("Keith Stribley 2009")
         dialog.set_authors(["Keith Stribley"])
-        dialog.set_program_name("PODiffGtk")
-        dialog.set_comments("A program to compare two PO files")
+        dialog.set_program_name(_("PODiffGtk"))
+        dialog.set_comments(_("A program to compare two PO files"))
         dialog.connect("response", self.aboutDialogClose)
         dialog.run()
     
@@ -544,9 +566,9 @@ if __name__ == "__main__":
             base.merge(sys.argv[1], sys.argv[2],sys.argv[3], sys.argv[4])
         else :
             if (len(sys.argv) != 1):
-                print "Usage: " + sys.argv[0] + " fileA fileB"
-                print "or     " + sys.argv[0] + " base fileA fileB merge-output"
-                print "or     " + sys.argv[0]
+                print _("Usage: {0} fileA fileB").format(sys.argv[0])
+                print _("or     {0} base fileA fileB merge-output").format(sys.argv[0])
+                print _("or     {0}").format(sys.argv[0])
                 sys.exit(1)
     base.main()
 

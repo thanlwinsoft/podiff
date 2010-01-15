@@ -335,7 +335,6 @@
         <child>
           <object class="GtkLabel" id="unitLeftSource">
             <property name="visible">True</property>
-            <property name="label" translatable="yes">&lt;b&gt;frame1&lt;/b&gt;</property>
             <property name="use_markup">True</property>
           </object>
           <packing>
@@ -347,7 +346,7 @@
         </child>
         <child>
           <object class="GtkButton" id="copyToRight">
-            <property name="label" translatable="yes">&gt;&gt;</property>
+            <property name="label">&gt;&gt;</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="receives_default">True</property>
@@ -385,7 +384,6 @@
         <child>
           <object class="GtkLabel" id="unitRightSource">
             <property name="visible">True</property>
-            <property name="label" translatable="yes">&lt;b&gt;frame1&lt;/b&gt;</property>
             <property name="use_markup">True</property>
           </object>
           <packing>
@@ -397,7 +395,7 @@
         </child>
         <child>
           <object class="GtkButton" id="copyToLeft">
-            <property name="label" translatable="yes">&gt;&gt;</property>
+            <property name="label">&gt;&gt;</property>
             <property name="visible">True</property>
             <property name="can_focus">True</property>
             <property name="receives_default">True</property>

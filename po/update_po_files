@@ -1,0 +1,9 @@
+intltool-update --pot -g podiff
+LOCALE_DIR=/usr/local/share/locale
+for lang in en my;
+do
+    intltool-update -d $lang -g podiff
+    sudo mkdir -p $LOCALE_DIR/$lang/LC_MESSAGES
+    sudo msgfmt $lang.po -o $LOCALE_DIR/$lang/LC_MESSAGES/podiff.mo
+done
+
