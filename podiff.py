@@ -72,36 +72,51 @@ class PODiff(object) :
             bUnit = self.find_unit(1, i)
             state = UnitState.MODE_DIFF
             if (bUnit is not None) :
-                if (i.gettarget() != bUnit.gettarget()): # a and b different
-                    self.show_left(row, i, [bUnit], False, state)
-                    self.show_right(row, bUnit, [i], False, state)
-                    row+=1
-                    alternateTranslations+=1
+                for plural in range(max(len(i.gettarget().strings), len(bUnit.gettarget().strings))):
+                    if plural < len(i.gettarget().strings) :
+                        if plural < len(bUnit.gettarget().strings) :
+                            if (i.gettarget().strings[plural] != bUnit.gettarget().strings[plural]): # a and b different
+                                self.show_left(row, i, [bUnit], False, state, plural)
+                                self.show_right(row, bUnit, [i], False, state, plural)
+                                row+=1
+                                alternateTranslations+=1
+                        else :
+                            self.show_left(row, i, None, False, state, plural)
+                            row+=1
+                            aOnly+=1
+                    else :
+                            self.show_right(row, bUnit, None, False, state, plural)
+                            row+=1
+                            bOnly+=1
+                        
             else : # a only
-                self.show_left(row, i, None, False, state)
-                row+=1
-                aOnly+=1
+                for plural in range(len(i.gettarget().strings)) :
+                    self.show_left(row, i, None, False, state, plural)
+                    row+=1
+                    aOnly+=1
             
 
         for i in self.stores[1].unit_iter():
             a = self.find_unit(0, i)
             if a is None : # b only
-                self.show_right(row, i, None, False, state)
-                row+=1
-                bOnly+=1
+                for plural in range(len(i.gettarget().strings)) :
+                    self.show_right(row, i, None, False, state, plural)
+                    row+=1
+                    bOnly+=1
         msg = "{0} differences, {1} only in a, {2} only in b".format(alternateTranslations, aOnly, bOnly)
         self.show_status(msg)
         self.set_total_units(row)
         print >> sys.stderr, msg
         
-    def merge_from(self, from_side, from_row, from_unit, to_side=None) :
+    def merge_from(self, from_side, from_row, from_unit, plural, to_side=None) :
         if to_side is None:
             if len(self.stores) == 4 :
                 to_side = Side.MERGE
+                to_unit = self.find_unit(to_side, from_unit)
             else :
                 if from_side == Side.RIGHT : to_side = Side.LEFT
                 else : to_side = Side.RIGHT
-        to_unit = self.find_unit(to_side, from_unit)
+                to_unit = self.find_unit(to_side-1, from_unit)
         if (to_unit is None) :
             if (isinstance(from_unit, translate.storage.pypo.pounit)):
                 to_unit = translate.storage.pypo.pounit(from_unit.source)
@@ -125,7 +140,14 @@ class PODiff(object) :
 
         if (hasattr(from_unit, "msgctxt")) :
             to_unit.msgctxt = from_unit.msgctxt
-        to_unit.settarget(from_unit.gettarget())
+        if (plural == 0) :
+            to_unit.settarget(from_unit.gettarget())
+        else :
+            new_target = to_unit.gettarget()
+            while (len(new_target.strings) < plural + 1) :
+                new_target.strings.append(u"")
+            new_target.strings[plural] = from_unit.gettarget().strings[plural]
+            to_unit.settarget(new_target)
         if (callable(to_unit.markfuzzy)) :
             to_unit.markfuzzy(False)
         for loc in from_unit.getlocations() :
@@ -133,15 +155,27 @@ class PODiff(object) :
         self.dirty[to_side] = True
         if to_side < Side.MERGE :
             state = UnitState.MODE_DIFF
-            self.show_side(to_side, from_row, to_unit, None, True, state)
+            self.show_side(to_side, from_row, to_unit, None, True, state, plural)
         else :
             state = UnitState.MODE_MERGE | UnitState.RESOLVED
             # show it before we remove from the unresolved list
-            self.show_side(to_side, from_row, to_unit, None, True, state)
+            self.show_side(to_side, from_row, to_unit, None, True, state, plural)
             if from_row in self.unresolved :
                 self.resolved.append(from_row)
                 msg = "{0} unresolved".format(len(self.unresolved) - len(self.resolved))
                 self.show_status(msg)
+                
+    def set_plural(self, target_unit, source_unit, plural) :
+        new_target = target_unit.gettarget()
+        if (source_unit is None) :
+            if len(new_target.strings) > plural :
+                new_target.strings[plural] = u""
+            return
+        if not target_unit.hasplural() :
+            target_unit.setsource(source_unit.getsource())
+        while (len(new_target.strings) <= plural) :
+            new_target.strings.append(u"")
+        new_target.strings[plural] = source_unit.gettarget().strings[plural]
 
     def merge(self, base, a, b, merge) :
         self.clear()
@@ -175,122 +209,224 @@ class PODiff(object) :
                 if (b_unit is None) :
                     # deleted in both, so don't merge into result
                     state = UnitState.RESOLVED | UnitState.MODE_MERGE
-                    self.show_side(Side.BASE, row, base_unit, None, False, state)
+                    for plural in range(len(base_unit.gettarget().strings)) :
+                        self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
                     removed += 1
                     row +=1
                     pass
                 else :
-                    if (base_unit.gettarget() == b_unit.gettarget()) :
-                        # removed in A, unchanged in B
-                        state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
-                        removed += 1
-                    else :
-                        # removed in A, modified in B
+                    for plural in range(len(base_unit.gettarget().strings)) :
+                        if (len(b_unit.gettarget().strings) > plural) :
+                            if (base_unit.gettarget().strings[plural] == b_unit.gettarget().strings[plural]) :
+                                # removed in A, unchanged in B
+                                state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                                removed += 1
+                            else :
+                                # removed in A, modified in B
+                                state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
+                                self.unresolved.append(row)
+                                removed += 1
+                            self.show_side(Side.BASE, row, base_unit, [b_unit], False, state, plural)
+                            self.show_side(Side.B, row, b_unit, [base_unit], False, state, plural)
+                            row+=1
+                        else :
+                            # plural doesn't exist in B
+                            state = UnitState.RESOLVED | UnitState.MODE_MERGE
+                            self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                            row+=1
+                    for plural in range(len(base_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
+                        # plural only in B
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
-                        self.unresolved.append(row)
                         removed += 1
-                    self.show_side(Side.BASE, row, base_unit, [b_unit], False, state)
-                    self.show_side(Side.B, row, b_unit, [base_unit], False, state)
-                    row+=1
+                        self.unresolved.append(row)
+                        self.show_side(Side.B, row, b_unit, None, False, state, plural)
+                        row+=1
             else :
                 if (b_unit is None) :
-                    if (base_unit.gettarget() == a_unit.gettarget()) :
-                        # removed in B, unchanged in A
-                        state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
-                        removed += 1
-                    else :
-                        # removed in B, modified in A
+                    for plural in range(len(base_unit.gettarget().strings)) :
+                        if (len(a_unit.gettarget().strings) > plural) :
+                            if (base_unit.gettarget().strings[plural] == a_unit.gettarget().strings[plural]) :
+                                # removed in B, unchanged in A
+                                state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                                removed += 1
+                            else :
+                                # removed in B, modified in A
+                                state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
+                                self.unresolved.append(row)
+                                removed += 1
+                            self.show_side(Side.BASE, row, base_unit, [a_unit], False, state, plural)
+                            self.show_side(Side.A, row, a_unit, [base_unit], False, state, plural)
+                            row+=1
+                        else :
+                            # plural doesn't exist in A
+                            state = UnitState.RESOLVED | UnitState.MODE_MERGE
+                            self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                            row+=1
+                    for plural in range(len(base_unit.gettarget().strings), len(a_unit.gettarget().strings)) :
+                        # plural only in A
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
-                        self.unresolved.append(row)
                         removed += 1
-                    self.show_side(Side.BASE, row, base_unit, [a_unit], False, state)
-                    self.show_side(Side.A, row, a_unit, [base_unit], False, state)
-                    row+=1
+                        self.unresolved.append(row)
+                        self.show_side(Side.A, row, a_unit, None, False, state, plural)
+                        row+=1
                 else : # normal case both a and b present
-                    if (base_unit.gettarget() == a_unit.gettarget()) :
-                        # a unchanged
-                        if (base_unit.gettarget() == b_unit.gettarget()) :
-                            # unchanged in both, so silently merge
-                            merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
-                            if (base_unit.getcontext() is not None) :
-                                merge_unit.msgctxt = base_unit.msgctxt
-                            merge_unit.merge(base_unit, overwrite, comments)
+                    merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
+                    if (base_unit.getcontext() is not None) :
+                        merge_unit.msgctxt = base_unit.msgctxt
+                    for plural in range(len(base_unit.gettarget().strings)) :
+                        if (len(a_unit.gettarget().strings) <= plural) :
+                            if (len(b_unit.gettarget().strings) <= plural) : 
+                                # neither a nor b has plural
+                                set_plural(merge_unit, None, plural)
+                                state = UnitState.RESOLVED | UnitState.MODE_MERGE
+                                removed += 1
+                                self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                                row+=1
+                            else :
+                                # b has plural, not a
+                                state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE | UnitState.USED_B
+                                self.unresolved.append(row)
+                                self.set_plural(merge_unit, b_unit, plural)
+                                self.show_side(Side.BASE, row, base_unit, [b_unit], False, state, plural)
+                                self.show_side(Side.B, row, b_unit, [base_unit], False, state, plural)
+                                new_in_b += 1
+                                row+=1
                         else :
-                            # only b was modified, so use b's text
-                            state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
-                            resolved_from_b += 1
-                            merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
-                            if (base_unit.getcontext() is not None) :
-                                merge_unit.msgctxt = base_unit.msgctxt
-                            merge_unit.merge(b_unit, overwrite, comments)
-                            self.show_side(Side.BASE, row, base_unit, [b_unit], False, state)
-                            self.show_side(Side.A, row, a_unit, [b_unit], False, state)
-                            self.show_side(Side.B, row, b_unit, [base_unit], False, state)
-                            self.show_side(Side.MERGE, row, merge_unit, [base_unit], False, state)
-                            row+=1
-                    else :
-                        # a modified
-                        if (base_unit.gettarget() == b_unit.gettarget() or
-                            a_unit.gettarget() == b_unit.gettarget()) :
-                            # b unchanged or the same as a, so use a
+                            if (len(b_unit.gettarget().strings) <= plural) : 
+                                # a has plural, not b
+                                state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE | UnitState.USED_A
+                                self.unresolved.append(row)
+                                self.set_plural(merge_unit, a_unit, plural)
+                                self.show_side(Side.BASE, row, base_unit, [a_unit], False, state, plural)
+                                self.show_side(Side.A, row, a_unit, [base_unit], False, state, plural)
+                                new_in_a += 1
+                                row+=1
+                            else :
+                                # both have plural
+                                if (base_unit.gettarget().strings[plural] == a_unit.gettarget().strings[plural]) :
+                                # a unchanged
+                                    if (base_unit.gettarget().strings[plural] == b_unit.gettarget().strings[plural]) :
+                                        # unchanged in both, so silently merge
+                                        if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
+                                        else : set_plural(merge_unit, base_unit, plural)
+                                    else :
+                                        # only b was modified, so use b's text
+                                        state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                                        resolved_from_b += 1
+                                        if (plural == 0) : merge_unit.merge(b_unit, overwrite, comments)
+                                        else : self.set_plural(merge_unit, b_unit, plural)
+                                        self.show_side(Side.BASE, row, base_unit, [b_unit], False, state, plural)
+                                        self.show_side(Side.A, row, a_unit, [b_unit], False, state, plural)
+                                        self.show_side(Side.B, row, b_unit, [base_unit], False, state, plural)
+                                        self.show_side(Side.MERGE, row, merge_unit, [base_unit], False, state, plural)
+                                        row+=1
+                                else :
+                                    # a modified
+                                    if (base_unit.gettarget().strings[plural] == b_unit.gettarget().strings[plural] or
+                                        a_unit.gettarget().strings[plural] == b_unit.gettarget().strings[plural]) :
+                                        # b unchanged or the same as a, so use a
+                                        state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                                        resolved_from_a += 1
+                                        if (plural == 0) : merge_unit.merge(a_unit, overwrite, comments)
+                                        else : self.set_plural(merge_unit, a_unit, plural)
+                                        self.show_side(Side.BASE, row, base_unit, [a_unit], False, state, plural)
+                                        self.show_side(Side.A, row, a_unit, [base_unit], False, state, plural)
+                                        self.show_side(Side.B, row, b_unit, [base_unit, a_unit], False, state, plural)
+                                        self.show_side(Side.MERGE, row, merge_unit, [base_unit], False, state, plural)
+                                        row+=1
+                                    else :
+                                        # both a and b changed
+                                        state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
+                                        self.unresolved.append(row)
+                                        if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
+                                        else : self.set_plural(merge_unit, base_unit, plural)
+                                        self.show_side(Side.BASE, row, base_unit, [a_unit, b_unit], False, state, plural)
+                                        self.show_side(Side.A, row, a_unit, [base_unit, b_unit], False, state, plural)
+                                        self.show_side(Side.B, row, b_unit, [base_unit, a_unit], False, state, plural)
+                                        self.show_side(Side.MERGE, row, merge_unit, [a_unit, b_unit], False, state, plural)
+                                        row+=1
+                    for plural in range(len(base_unit.gettarget().strings), len(a_unit.gettarget().strings)) :
+                        # plural in a, not in base
+                        if (len(b_unit.gettarget().strings) <= plural) :
+                            # plural not in B
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                            self.set_plural(merge_unit, a_unit, plural)
+                            self.show_side(Side.A, row, a_unit, None, False, state, plural)
+                            self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
                             resolved_from_a += 1
-                            merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
-                            if (base_unit.getcontext() is not None) :
-                                merge_unit.msgctxt = base_unit.msgctxt
-                            merge_unit.merge(a_unit, overwrite, comments)
-                            self.show_side(Side.BASE, row, base_unit, [a_unit], False, state)
-                            self.show_side(Side.A, row, a_unit, [base_unit], False, state)
-                            self.show_side(Side.B, row, b_unit, [base_unit, a_unit], False, state)
-                            self.show_side(Side.MERGE, row, merge_unit, [base_unit], False, state)
-                            row+=1
                         else :
-                            # both a and b changed
-                            state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
-                            self.unresolved.append(row)
-                            merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
-                            if (base_unit.getcontext() is not None) :
-                                merge_unit.msgctxt = base_unit.msgctxt
-                            merge_unit.merge(base_unit, overwrite, comments)
-                            self.show_side(Side.BASE, row, base_unit, [a_unit, b_unit], False, state)
-                            self.show_side(Side.A, row, a_unit, [base_unit, b_unit], False, state)
-                            self.show_side(Side.B, row, b_unit, [base_unit, a_unit], False, state)
-                            self.show_side(Side.MERGE, row, merge_unit, [a_unit, b_unit], False, state)
+                            if (b_unit.gettarget().strings[plural] == a_unit.gettarget().strings[plural]) :
+                                state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                                self.set_plural(merge_unit, a_unit, plural)
+                                self.show_side(Side.A, row, a_unit, None, False, state, plural)
+                                self.show_side(Side.B, row, b_unit, None, False, state, plural)
+                                self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                                resolved_from_a += 1
+                            else :
+                                state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
+                                self.unresolved.append(row)
+                                self.set_plural(merge_unit, a_unit, plural)
+                                self.show_side(Side.A, row, a_unit, [b_unit], False, state, plural)
+                                self.show_side(Side.B, row, b_unit, [a_unit], False, state, plural)
+                                self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                        row+=1
+                    for plural in range(len(base_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
+                        if plural >= len(a_unit.gettarget().strings) :
+                            state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                            self.set_plural(merge_unit, b_unit, plural)
+                            self.show_side(Side.B, row, a_unit, None, False, state, plural)
+                            self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                            resolved_from_b += 1
+                            new_in_b += 1
                             row+=1
+        # TODO fix the case where a/b has a plural and base didn't since the source strings compare
+        # to be different, you can get both listed as separate entries in the table
+
         # now find new entries in a
         for a_unit in self.stores[Side.A].unit_iter():
             base_unit = self.find_unit(Side.BASE, a_unit)
             if base_unit is not None : continue
             b_unit = self.find_unit(Side.B, a_unit)
-            if (b_unit is None or b_unit.gettarget() == a_unit.gettarget()):
-                # use a
-                state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
-                merge_unit = self.stores[Side.MERGE].addsourceunit(a_unit.source)
-                if (a_unit.getcontext() is not None) :
-                    merge_unit.msgctxt = a_unit.msgctxt
-                merge_unit.merge(a_unit, overwrite, comments)
-                self.show_side(Side.A, row, a_unit, None, False, state)
-                resolved_from_a += 1
-                new_in_a += 1
-                if (b_unit is not None) :
-                    self.show_side(Side.B, row, b_unit, None, False, state)
+            merge_unit = self.stores[Side.MERGE].addsourceunit(a_unit.source)
+            if (a_unit.getcontext() is not None) :
+                merge_unit.msgctxt = a_unit.msgctxt
+            for plural in range(len(a_unit.gettarget().strings)) :
+                if (b_unit is None or (len(a_unit.gettarget().strings) > plural and
+                    b_unit.gettarget().strings[plural] == a_unit.gettarget().strings[plural])):
+                    # use a
+                    state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
+                    if (plural == 0) :
+                        merge_unit.merge(a_unit, overwrite, comments)
+                    else :
+                        self.set_plural(merge_unit, a_unit, plural)
+                    self.show_side(Side.A, row, a_unit, None, False, state, plural)
+                    resolved_from_a += 1
+                    new_in_a += 1
+                    if (b_unit is not None) :
+                        self.show_side(Side.B, row, b_unit, None, False, state, plural)
+                        new_in_b += 1
+                    self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                    row+=1
+                else :
+                    # new entry is also in b
+                    state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
+                    new_in_a += 1
                     new_in_b += 1
-                self.show_side(Side.MERGE, row, merge_unit, None, False, state)
-                row+=1
-            else :
-                # new entry is also in b
-                state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
-                new_in_a += 1
-                new_in_b += 1
-                self.unresolved.append(row)
-                merge_unit = self.stores[Side.MERGE].addsourceunit(a_unit.source)
-                if (a_unit.getcontext() is not None) :
-                    merge_unit.msgctxt = a_unit.msgctxt
-                # don't know what to merge yet
-                self.show_side(Side.A, row, a_unit, [b_unit], False, state)
-                self.show_side(Side.B, row, b_unit, [a_unit], False, state)
-                self.show_side(Side.MERGE, row, merge_unit, None, False, state)
-                row+=1
+                    self.unresolved.append(row)
+                    # don't know what to merge yet
+                    self.show_side(Side.A, row, a_unit, [b_unit], False, state, plural)
+                    self.show_side(Side.B, row, b_unit, [a_unit], False, state, plural)
+                    self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                    row+=1
+            if (b_unit is not None) :
+                for plural in range(len(a_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
+                    state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
+                    resolved_from_b += 1
+                    new_in_b += 1
+                    self.set_plural(merge_unit, b_unit, plural)
+                    self.show_side(Side.B, row, b_unit, None, False, state)
+                    self.show_side(Side.MERGE, row, merge_unit, None, False, state)
+                    row+=1
         # find new entries only in b
         for b_unit in self.stores[Side.B].unit_iter():
             base_unit = self.find_unit(Side.BASE, b_unit)
@@ -305,9 +441,11 @@ class PODiff(object) :
                 if (b_unit.getcontext() is not None) :
                     merge_unit.msgctxt = b_unit.msgctxt
                 merge_unit.merge(b_unit, overwrite, comments)
-                self.show_side(Side.B, row, b_unit, None, False, state)
-                self.show_side(Side.MERGE, row, merge_unit, None, False, state)
-                row+=1
+                for plural in range(len(b_unit.gettarget().strings)) :
+                    if (plural > 0) : self.set_plural(merge_unit, b_unit, plural)
+                    self.show_side(Side.B, row, b_unit, None, False, state, plural)
+                    self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                    row+=1
         self.dirty[Side.MERGE] = True
         self.on_dirty()
         msg = "{0} unresolved; {1} resolved from A; {2} resolved from B; {3} new in A; {4} new in B; {5} removed".format(len(self.unresolved), resolved_from_a, resolved_from_b, new_in_a, new_in_b, removed)

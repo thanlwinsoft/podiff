@@ -31,8 +31,9 @@ class PoUnitGtk(object) :
     """Displays a frame showing the contents of a translatable unit."""
     po_diff = None
     diff_colors = [gtk.gdk.Color(1.0,0.5,0.5), gtk.gdk.Color(0.5,1.0,0.5), gtk.gdk.Color(0.5,0.5,1.0), gtk.gdk.Color(1.0,1.0,0.5), gtk.gdk.Color(1.0,0.5,1.0), gtk.gdk.Color(0.5,1.0,1.0), gtk.gdk.Color(0.5,0.5,0.5)]
-    def __init__(self, side, state):
+    def __init__(self, side, state, plural):
         self.side = side
+        self.plural = plural
         self.frame = gtk.Frame()
         self.frame.connect("scroll-event", self.po_diff.unitVscrollbar_scroll_event_cb)
         self.vbox = gtk.VBox(False, 2)
@@ -55,7 +56,7 @@ class PoUnitGtk(object) :
             self.diff_tag[i].set_property("background-gdk", self.diff_colors[self.side + i])
 #            if (i == 0) : self.diff_tag[i].set_property("style", pango.STYLE_ITALIC)
 #            if (i == 1) : self.diff_tag[i].set_property("underline", pango.UNDERLINE_SINGLE)
-#            if (i == 2) : self.diff_tag[i].set_property("underline", pango.UNDERLINE_DOUBLE)
+#            if (i == 2) : self.diff_tag[i].set_property("weight", pango.WEIGHT_BOLD)
             self.target_buffer.get_tag_table().add(self.diff_tag[i])
         self.edit_tag = gtk.TextTag(name="edit")
         self.edit_tag.set_property("background-gdk", self.diff_colors[len(self.diff_colors) - 1])
@@ -121,8 +122,14 @@ class PoUnitGtk(object) :
 #        self.source_buffer.set_text(unit.getid())
 #        self.target_buffer.set_text(unit.gettarget())
         self.unit = unit
-        self.source_buffer.set_text(unit.source)
-        self.target_buffer.set_text(unit.gettarget())
+        if (self.plural == 0) :
+            self.source_buffer.set_text(unit.source)
+        else :
+            self.source_buffer.set_text(unit.source.strings[1])
+        if (len(unit.gettarget().strings) > self.plural) :
+            self.target_buffer.set_text(unit.gettarget().strings[self.plural])
+        else :
+            self.target_buffer.set_text(u"")
         self.context_buffer.set_text(unit.getcontext())
         self.target_buffer.connect("insert-text", self.insert_text_event_cb, self.target)
         self.target_buffer.connect("delete-range", self.delete_range_event_cb, self.target)
@@ -137,7 +144,9 @@ class PoUnitGtk(object) :
             # print cf_unit.gettarget()
             for j in range(len(cf_units)) :
                 cf_unit = cf_units[j]
-                common = find_matches(unit.gettarget(), cf_unit.gettarget())
+                if (len(unit.gettarget().strings) <= self.plural or len(cf_unit.gettarget().strings) <= self.plural) :
+                    continue
+                common = find_matches(unit.gettarget().strings[self.plural], cf_unit.gettarget().strings[self.plural])
                 pos = 0
                 for i in range(len(common)) :
                     if (pos < common[i][0]) : 
@@ -145,9 +154,9 @@ class PoUnitGtk(object) :
                         e_iter = self.target_buffer.get_iter_at_offset(common[i][0])
                         self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
                     pos = common[i][0] + common[i][2]
-                if pos < len(unit.gettarget()) :
+                if pos < len(unit.gettarget().strings[self.plural]) :
                     s_iter = self.target_buffer.get_iter_at_offset(pos)
-                    e_iter = self.target_buffer.get_iter_at_offset(len(unit.gettarget()))
+                    e_iter = self.target_buffer.get_iter_at_offset(len(unit.gettarget().strings[self.plural]))
                     self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
         if (modified) :
             self.target_buffer.remove_all_tags(self.target_buffer.get_start_iter(), self.target_buffer.get_end_iter())
@@ -169,7 +178,7 @@ class PoUnitGtk(object) :
         (side, row) = self.find_frame_pos(widget)
         if (self.po_diff is not None) :
             poUnit = self.po_diff.unit_dict[(side, row)]
-            self.po_diff.merge_from(side, row, poUnit.unit)
+            self.po_diff.merge_from(side, row, poUnit.unit, poUnit.plural)
     
     def insert_text_event_cb(self, textbuffer, iter, text, length, user_param1=None) :
         (side, row) = self.find_frame_pos(user_param1)
@@ -246,13 +255,13 @@ class PoDiffGtk (podiff.PODiff):
             min_visible_row = max(0, max_visible_row - PoDiffGtk.UNITS_PER_PAGE)
         return (min_visible_row, max_visible_row)
     
-    def show_side(self, side, row, unit, cf_unit = None, modified = False, state=0) :
+    def show_side(self, side, row, unit, cf_unit, modified, state, plural) :
         shown = False
         if (side,row) in self.unit_dict:
             self.diff_table.remove(self.unit_dict[(side, row)].frame)
             shown = self.unit_dict[(side, row)].frame
             del self.unit_dict[(side, row)]
-        diff = PoUnitGtk(side, state)
+        diff = PoUnitGtk(side, state, plural)
         self.unit_dict[(side, row)] = diff
         self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row+1, bottom_attach=row+2)
         diff.set_unit(unit, cf_unit, modified)
@@ -322,11 +331,11 @@ class PoDiffGtk (podiff.PODiff):
         self.hide_units()
         return self.show_units(int(widget.get_value()))
 
-    def show_left(self, row, unit, cf_unit = None, modified = False, state=0) :
-        self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified, state)
+    def show_left(self, row, unit, cf_unit, modified, state, plural) :
+        self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified, state, plural)
 
-    def show_right(self, row, unit, cf_unit = None, modified = False, state=0) :
-        self.show_side(podiff.Side.RIGHT, row, unit, cf_unit, modified, state)
+    def show_right(self, row, unit, cf_unit, modified, state, plural) :
+        self.show_side(podiff.Side.RIGHT, row, unit, cf_unit, modified, state, plural)
 
     def show_status(self, msg) :
         statusbar = self.builder.get_object("statusbar")

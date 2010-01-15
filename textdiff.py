@@ -144,7 +144,7 @@ def do_stats(length) :
     for i in range(1000) :
         a = ""
         b = ""
-        for i in range(50) :
+        for i in range(length) :
             a += random.choice(alphabet)
             b += random.choice(alphabet)
         start = time.clock()
@@ -184,4 +184,9 @@ if __name__ == "__main__":
         print matches
         print markup_deltas(a, b, matches)
     else :
-        do_stats(100)
+        if (len(sys.argv) == 2) : 
+            if (sys.argv[1] == '-h' or sys.argv[1] == '--help'):
+                print "Usage: " + sys.argv[0] + " textA textB"
+            if (sys.argv[1] == '--stats') :
+                do_stats(100)
+
