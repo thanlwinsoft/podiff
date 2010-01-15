@@ -15,118 +15,145 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with this program; if not, see <http://www.gnu.org/licenses/>.
+#
+# The algorithm used here is based on the description at:
+# http://en.wikipedia.org/wiki/Longest_common_subsequence_problem
 
 import sys
 import math
 import unicodedata
+import random
+import time
 
-def find_matches(a, b, min_match=0):
-    """Find the segments of text which are common between a and b.
-
-The common segments are given as a list of tupples: (aOffset, b_offset, length)
-min_match can be used to speed up the search but will not show areas with less than min_match
-characters in common."""
-    mdict = dict()
-    cf = []
-    if (min_match == 0) :
-        min_match = 1 + min(len(a), len(b))/10
-    if (len(a) <= len(b)):
-        matches = find_match_lists(a, b, 0, 0, mdict, min_match)
-        mList = matches
-        while (len(mList) > 1) :
-            cf.append(mList[1][0])
-            mList = mList[1][1]
-    else :
-        # b, is shorter so loop over b
-        matches = find_match_lists(b, a, 0, 0, mdict, min_match)
-        mList = matches
-        while (len(mList) > 1) :
-            common = mList[1][0]
-            common = (common[1], common[0], common[2])
-            cf.append(common)
-            mList = mList[1][1]
-    return cf
-    
 def is_mark(c) :
     cat = unicodedata.category(c)
     return cat[0] == 'M'
 
-def find_cluster_bounds(a, i, j) :
-    # move start to a non-mark
-    while(i < len(a) and is_mark(a[i])):
+def next_cluster(text, offset) :
+    i = offset + 1
+    text_len = len(text)
+    while (i < text_len and is_mark(text[i])) :
+        i += 1
+    return text[offset:i]
+
+def prev_cluster(text, offset) :
+    i = offset - 1
+    while (i >= 0 and is_mark(text[i])) :
+        i -= 1
+    return text[i:offset]
+
+def find_matches(a, b) :
+    start = 0
+    ca = next_cluster(a, start)
+    cb = next_cluster(b,start)
+    while (start < len(a) and start < len(b) and ca == cb):
+        start += len(ca)
+        ca = next_cluster(a, start)
+        cb = next_cluster(b, start)
+    a_end = len(a)
+    b_end = len(b)
+    ca = prev_cluster(a, a_end)
+    cb = prev_cluster(b, b_end)
+    while (a_end > start and b_end > start and ca == cb):
+        a_end -= len(ca)
+        b_end -= len(cb)
+        ca = prev_cluster(a, a_end)
+        cb = prev_cluster(b, b_end)
+    if (a_end < start) : a_end = a_start
+    if (b_end < start) : b_end = b_start
+    lcs_data = longest_common_subsequence(a, b, start, start, a_end, b_end)
+#    print lcs_data.lcs
+    common = []
+    if (start > 0) : common.append((0, 0, start))
+    if (lcs_data.lcs[-1][-1] > 0) :
+        common.extend(get_a_longest_subsequence(a, b, lcs_data))
+    if (a_end < len(a)) : common.append((a_end, b_end, len(a) - a_end))
+    return common
+
+def get_a_longest_subsequence(a, b, lcs_data) :
+    a_cluster_len = len(lcs_data.lcs)
+    b_cluster_len = len(lcs_data.lcs[0])
+    col = b_cluster_len - 1
+    row = a_cluster_len - 1
+    common = []
+    while row > 0 and col > 0 :
+        if (lcs_data.lcs[row][col-1] == lcs_data.lcs[row][col]) :
+                col -= 1
+        else :
+            if (lcs_data.lcs[row-1][col] == lcs_data.lcs[row][col]) :
+                row -= 1
+            else :
+                if (lcs_data.lcs[row-1][col-1] < lcs_data.lcs[row][col]) :
+                    common.insert(0, (lcs_data.a_clusters[row-1], lcs_data.b_clusters[col-1], lcs_data.a_clusters[row] - lcs_data.a_clusters[row-1]))
+                    row -= 1
+                    col -= 1
+
+    return common
+
+class LcsData :
+    a_clusters= []
+    b_clusters = []
+    lcs = [[0]]
+
+def longest_common_subsequence(a, b, a_offset, b_offset, a_end, b_end) :
+#    lcs[0:a_end - a_offset + 1][0:b_end - b_offset + 1] = 0
+    lcs = [[0] ] 
+    data = LcsData()
+    data.a_clusters = []
+    a_pos = a_offset
+    b_pos = b_offset
+    i = 1
+    while a_pos < a_end :
+        data.a_clusters.append(a_pos)
+        a_cluster = next_cluster(a, a_pos)
+        a_pos += len(a_cluster)
+        lcs.append([0])
         i+= 1
-    if (j <= i): j = i + 1
-    while (j < len(a) and is_mark(a[j])):
-        j+= 1
-    return (i, j)
+    data.a_clusters.append(a_pos)
+    i = 1
+    while b_pos < b_end :
+        data.b_clusters.append(b_pos)
+        b_cluster = next_cluster(b, b_pos)
+        b_pos += len(b_cluster)
+        lcs[0].append(0)
+        i+= 1
+    data.b_clusters.append(b_pos)
 
-def find_match(a, b, aStart, bStart, min_match=1):
-    """Find a match common to a and b starting at aStart, bStart"""
-    match_len = min_match 
-    a_pos = aStart
-    a_end = min(a_pos + match_len, len(a))
-#    print aStart, bStart
-    (a_pos, a_end) = find_cluster_bounds(a, a_pos, a_end)
-    if (a_pos >= len(a)): return None
-    b_offset = b.find(a[a_pos:a_end], bStart)
-    while (b_offset == -1) :
-        a_pos += 1
-        a_end = min(a_pos + match_len, len(a))
-        (a_pos, a_end) = find_cluster_bounds(a, a_pos, a_end)
-        if (a_pos >= len(a)) : return None
-        b_offset = b.find(a[a_pos:a_end], bStart)
-    # found a match, now see how much it can be extended
-    while (a_pos+match_len < len(a) and b_offset+match_len < len(b) and
-            a[a_pos+match_len] == b[b_offset+match_len]) :
-        if (not is_mark(a[a_pos+match_len])) : a_end = a_pos+match_len
-        match_len += 1
-    # check we haven't stopped mid-cluster
-    if ((a_pos+match_len < len(a) and is_mark(a[a_pos+match_len])) or
-        (b_offset+match_len < len(b) and is_mark(b[b_offset+match_len]))):
-        match_len = a_end - a_pos
-    return (a_pos, b_offset, match_len)
+    a_pos = a_offset
+    for r in range(1, a_end - a_offset + 1) :
+        b_pos = b_offset
+        a_cluster = next_cluster(a, a_pos)
+        for c in range(1, b_end - b_offset + 1) :
+            b_cluster = next_cluster(b, b_pos)
+            if (a_cluster == b_cluster) :
+                lcs[r].append(lcs[r-1][c-1] + 1)
+            else :
+                lcs[r].append(max(lcs[r-1][c], lcs[r][c-1]))
+            b_pos += len(b_cluster)
+            if b_pos == len(b): break;
+        a_pos += len(a_cluster)
+        if a_pos == len(a): break;
+    data.lcs = lcs
+    return data
 
-def find_match_lists(a, b, aStart, bStart, mdict, min_match=1):
-    """Create a tree of possible matches.
-Returns a list, first element is length of longest match
-next element contains list of tupples of best match.
-"""
-    matches = [0]
-    i = 0
-    longest_match = 0
-    longest_index = -1
-    while (aStart+min_match < len(a)):
-        match = find_match(a, b, aStart, bStart, min_match)
-        if (match is not None):
-            # if there is less than longest match left in b, then this path can't be the best
-            if (len(b) - match[1] < longest_match) :
-                aStart+=1
-                continue
-            i+= 1
-            aOffset = match[0] + match[2]
-            b_offset = match[1] + match[2]
-            key = (aOffset, b_offset)
-            if key in dict(mdict):
-                match_list = mdict[key]
-            else:
-                match_list = find_match_lists(a, b, aOffset, b_offset, mdict, min_match)
-                mdict[key] = match_list
-            matches.append([match, match_list])
-            combined_match_len = match[2] + matches[i][1][0]
-            if combined_match_len > longest_match : 
-                longest_index = i
-                longest_match = combined_match_len
-        aStart+= 1
-    matches[0] = longest_match
-    if longest_index > -1: matches[1] = matches[longest_index]
-    matches = matches[0:2]
-    return matches
+def do_stats(length) :
+    alphabet = u"abcdefghijklmnopqrstuvwxyz"
+#    print a,b
+    times = []
+    elapsed = 0
+    for i in range(1000) :
+        a = ""
+        b = ""
+        for i in range(50) :
+            a += random.choice(alphabet)
+            b += random.choice(alphabet)
+        start = time.clock()
+        find_matches(a,b)
+        end = time.clock()
+        elapsed = end - start
+        times.append(elapsed)
+    print "min ", min(times), ", avg " , sum(times)/len(times), ", max ", max(times)
 
-def delta_str(a, b, delta_prefix='[', delta_suffix=']', min_match=3) :
-    """Compares two strings and marks up the areas which are different with specified characters"""
-    common = find_deltas(sys.argv[1], sys.argv[2], min_match)
-    return markup_delta(a, b, common, delta_prefix, delta_suffix)
-    
 def markup_deltas(a, b, common, delta_prefix='[', delta_suffix=']') :
     """Uses the result of find_deltas and marks up the areas which are different with specified characters"""
     marked_a = ""
@@ -148,18 +175,13 @@ def markup_deltas(a, b, common, delta_prefix='[', delta_suffix=']') :
         marked_b += delta_prefix + b[bPos:len(b)] + delta_suffix
     return (marked_a, marked_b)
 
+
 if __name__ == "__main__":
     if (len(sys.argv) >= 3) :
-        min_match = 1
         a = unicode(sys.argv[1], 'utf-8')
         b = unicode(sys.argv[2], 'utf-8')
-        assert(isinstance(a, unicode))
-        assert(isinstance(b, unicode))        
-        if (len(sys.argv) >= 4) : min_match = int(sys.argv[3])
-#        print find_matches(sys.argv[1], sys.argv[2], 0, 0, min_match)
-        common = find_matches(a, b, min_match)
-        print common
-        out = markup_deltas(a, b, common)
-        print out[0], '\n', out[1]
-
-
+        matches = find_matches(a, b)
+        print matches
+        print markup_deltas(a, b, matches)
+    else :
+        do_stats(100)

@@ -19,16 +19,18 @@
 import pygtk
 pygtk.require('2.0')
 import gtk
+import pango
 import sys
-import podiff
-import textdiff
 import os.path
 import translate.storage.factory
+
+import podiff
+from textdiff import find_matches
 
 class PoUnitGtk(object) :
     """Displays a frame showing the contents of a translatable unit."""
     po_diff = None
-    diff_colors = [gtk.gdk.Color(1.0,0.5,0.5), gtk.gdk.Color(0.5,1.0,0.5), gtk.gdk.Color(0.5,0.5,1.0), gtk.gdk.Color(1.0,1.0,0.5), gtk.gdk.Color(1.0,0.5,1.0), gtk.gdk.Color(0.5,1.0,1.0)]
+    diff_colors = [gtk.gdk.Color(1.0,0.5,0.5), gtk.gdk.Color(0.5,1.0,0.5), gtk.gdk.Color(0.5,0.5,1.0), gtk.gdk.Color(1.0,1.0,0.5), gtk.gdk.Color(1.0,0.5,1.0), gtk.gdk.Color(0.5,1.0,1.0), gtk.gdk.Color(0.5,0.5,0.5)]
     def __init__(self, side, state):
         self.side = side
         self.frame = gtk.Frame()
@@ -47,11 +49,16 @@ class PoUnitGtk(object) :
         self.source.show()
         self.target = gtk.TextView()
         self.target_buffer = gtk.TextBuffer()
-        self.diff_tag = gtk.TextTag(name="diff")
-        self.diff_tag.set_property("background-gdk", self.diff_colors[self.side])
-        self.target_buffer.get_tag_table().add(self.diff_tag)
+        self.diff_tag = []
+        for i in range(3) :
+            self.diff_tag.append(gtk.TextTag(name="diff" + str(i)))
+            self.diff_tag[i].set_property("background-gdk", self.diff_colors[self.side + i])
+#            if (i == 0) : self.diff_tag[i].set_property("style", pango.STYLE_ITALIC)
+#            if (i == 1) : self.diff_tag[i].set_property("underline", pango.UNDERLINE_SINGLE)
+#            if (i == 2) : self.diff_tag[i].set_property("underline", pango.UNDERLINE_DOUBLE)
+            self.target_buffer.get_tag_table().add(self.diff_tag[i])
         self.edit_tag = gtk.TextTag(name="edit")
-        self.edit_tag.set_property("background-gdk", self.diff_colors[5])
+        self.edit_tag.set_property("background-gdk", self.diff_colors[len(self.diff_colors) - 1])
         self.target_buffer.get_tag_table().add(self.edit_tag)
         self.target_buffer.set_text("Target")
         self.target.set_tooltip_text("Target")
@@ -110,7 +117,7 @@ class PoUnitGtk(object) :
         self.vbox.show()
         self.title_box.show()
 
-    def set_unit(self, unit, cf_unit=None, modified=False) :
+    def set_unit(self, unit, cf_units=None, modified=False) :
 #        self.source_buffer.set_text(unit.getid())
 #        self.target_buffer.set_text(unit.gettarget())
         self.unit = unit
@@ -125,21 +132,23 @@ class PoUnitGtk(object) :
         else :
             self.context.hide()
         self.po_diff.on_dirty()
-        if (cf_unit is not None) :
-            #print unit.gettarget()
-            #print cf_unit.gettarget()
-            common = textdiff.find_matches(unit.gettarget(), cf_unit.gettarget())
-            pos = 0
-            for i in range(len(common)) :
-                if (pos < common[i][0]) : 
+        if (cf_units is not None) :
+            # print unit.gettarget()
+            # print cf_unit.gettarget()
+            for j in range(len(cf_units)) :
+                cf_unit = cf_units[j]
+                common = find_matches(unit.gettarget(), cf_unit.gettarget())
+                pos = 0
+                for i in range(len(common)) :
+                    if (pos < common[i][0]) : 
+                        s_iter = self.target_buffer.get_iter_at_offset(pos)
+                        e_iter = self.target_buffer.get_iter_at_offset(common[i][0])
+                        self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
+                    pos = common[i][0] + common[i][2]
+                if pos < len(unit.gettarget()) :
                     s_iter = self.target_buffer.get_iter_at_offset(pos)
-                    e_iter = self.target_buffer.get_iter_at_offset(common[i][0])
-                    self.target_buffer.apply_tag_by_name("diff", s_iter, e_iter)
-                pos = common[i][0] + common[i][2]
-            if pos < len(unit.gettarget()) :
-                s_iter = self.target_buffer.get_iter_at_offset(pos)
-                e_iter = self.target_buffer.get_iter_at_offset(len(unit.gettarget()))
-                self.target_buffer.apply_tag_by_name("diff", s_iter, e_iter)
+                    e_iter = self.target_buffer.get_iter_at_offset(len(unit.gettarget()))
+                    self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
         if (modified) :
             self.target_buffer.remove_all_tags(self.target_buffer.get_start_iter(), self.target_buffer.get_end_iter())
             if self.side == podiff.Side.LEFT :
@@ -153,7 +162,7 @@ class PoUnitGtk(object) :
         frame = widget.get_parent()
         while (not isinstance(frame, gtk.Frame)) : frame = frame.get_parent()
         side = frame.get_parent().child_get_property(frame, "left-attach")
-        row = frame.get_parent().child_get_property(frame, "top-attach")
+        row = frame.get_parent().child_get_property(frame, "top-attach")-1
         return (side, row)
 
     def copy_button_release_event_cb(self, widget, data=None) :
@@ -245,7 +254,7 @@ class PoDiffGtk (podiff.PODiff):
             del self.unit_dict[(side, row)]
         diff = PoUnitGtk(side, state)
         self.unit_dict[(side, row)] = diff
-        self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row, bottom_attach=row+1)
+        self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row+1, bottom_attach=row+2)
         diff.set_unit(unit, cf_unit, modified)
         sb = self.builder.get_object("unitVscrollbar")
         min_visible_row, max_visible_row = self.page_range()
@@ -307,41 +316,7 @@ class PoDiffGtk (podiff.PODiff):
                     if key in self.unit_dict :
                         self.unit_dict[(col, row)].frame.show()
         self.prev_page = value
-        return True
-    
-    # TODO remove
-    def _old_show_units(self, value) :
-        filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
-        if filter_resolved :
-            min_show = value
-            max_show = value + PoDiffGtk.UNITS_PER_PAGE
-            if (max_show >= len(self.unresolved)) :
-                max_show = len(self.unresolved)
-                min_show = max(0, len(self.unresolved) - PoDiffGtk.UNITS_PER_PAGE)
-            for child in self.diff_table.get_children() :
-                row = self.diff_table.child_get_property(child, "top-attach")
-                if (row in self.unresolved) :
-                    i = self.unresolved.index(row)
-                    if i >= min_show and i < max_show :
-                        child.show()
-                    else :
-                        child.hide()
-                else :
-                    child.hide()
-        else :
-            min_show = value
-            max_show = value + PoDiffGtk.UNITS_PER_PAGE
-            if (max_show >= self.unit_count) :
-                max_show = self.unit_count
-                min_show = max(0, self.unit_count - PoDiffGtk.UNITS_PER_PAGE)
-            for child in self.diff_table.get_children() :
-                row = self.diff_table.child_get_property(child, "top-attach")
-                if row >= min_show and row < max_show :
-                    child.show()
-                else :
-                    child.hide()
-        self.prev_page = value
-        return True
+        return True    
 
     def unitVscrollbar_value_changed_cb(self, widget, data=None) :
         self.hide_units()
@@ -365,13 +340,18 @@ class PoDiffGtk (podiff.PODiff):
         t = self.builder.get_object("diffTitleB")
         t.set_text(b)
         t.set_tooltip_text(b)
+        t = self.builder.get_object("baseTitle")
+        t.hide()
+        t = self.builder.get_object("mergeTitle")
+        t.hide()        
 
     def set_merge_titles(self, base, a, b, merge) :
         for label, text in zip(self.title_ids, [base, a, b, merge]):
             t = self.builder.get_object(label)
             t.set_text(text)
             t.set_tooltip_text(text)
-        
+            t.show()
+
     def saveMenuItem_button_release_event_cb(self, widget, data=None):
         self.saveAll()
 
@@ -489,7 +469,8 @@ http://www.gnu.org/licenses/""")
         self.unit_count = 0
         self.unresolved = []
         for child in self.diff_table.get_children() :
-            self.diff_table.remove(child)
+            if (isinstance(child, PoUnitGtk)) :
+                self.diff_table.remove(child)
         for i in range(len(self.dirty)) :
             self.dirty[i] = False
         self.unit_dict = {}
@@ -511,6 +492,10 @@ http://www.gnu.org/licenses/""")
         if len(self.stores) == 4 :
             if (button.get_active()) : 
                 self.hide_units(False)
+                # update the self.unresolved array
+                for resolve in self.resolved :
+                    self.unresolved.remove(resolve)
+                self.resolved = []
                 sb = self.builder.get_object("unitVscrollbar")
                 sb.set_adjustment(gtk.Adjustment(0, 0, len(self.unresolved), 1, PoDiffGtk.UNITS_PER_PAGE, PoDiffGtk.UNITS_PER_PAGE))
                 self.show_units(0)
