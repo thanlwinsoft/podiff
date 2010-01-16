@@ -237,6 +237,7 @@ class PoDiffGtk (podiff.PODiff):
         self.prev_page = 0
         self.stores = []
         self.clear()
+        self.scrolling = False
 
     def main(self):
         gtk.main()
@@ -342,8 +343,14 @@ class PoDiffGtk (podiff.PODiff):
         return True    
 
     def unitVscrollbar_value_changed_cb(self, widget, data=None) :
-        self.hide_units()
-        return self.show_units(int(widget.get_value()))
+        if self.scrolling : return False
+        else :
+            self.scrolling = True
+            print "scrollbar value changed" + str(widget.get_value())
+            self.hide_units()
+            self.show_units(int(widget.get_value()))
+            self.scrolling = False
+        return True
 
     def show_left(self, row, unit, cf_unit, modified, state, plural) :
         self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified, state, plural)
@@ -550,11 +557,13 @@ http://www.gnu.org/licenses/"""))
     
     def unitVscrollbar_scroll_event_cb(self, widget, event, data=None) :
         sb = self.builder.get_object("unitVscrollbar")
-        #print str(event)
+        print str(event)
         if (event.direction == gtk.gdk.SCROLL_UP) : 
             sb.set_value(sb.get_value() - sb.get_adjustment().get_step_increment())
+            return True
         if (event.direction & gtk.gdk.SCROLL_DOWN) : 
             sb.set_value(sb.get_value() + sb.get_adjustment().get_step_increment())
+            return True
 
 # main method
 if __name__ == "__main__":

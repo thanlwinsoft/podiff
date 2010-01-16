@@ -57,23 +57,42 @@ class PODiff(object) :
         return None
     
     #TODO
-    def get_unit_subtarget(self, side, unit, plural) :
+    def index_storage(self) :
+        for s in self.stores :
+            for unit in s.unit_iter():
+                pass
         pass
+        
+    def find_storage(self, filename) :
+        try :
+            return translate.storage.factory.getobject(filename)
+        except ValueError :
+            try :
+                return translate.storage.pypo.pofile.parsefile(filename)
+            except :
+                self.show_warning(_("Failed to parse file {0}.").format(filename))
+        return None
 
     def diff(self, a, b) :
         self.clear()
         self.stores = []
-        self.stores.append(translate.storage.factory.getobject(a))
-        self.stores.append(translate.storage.factory.getobject(b))
+        self.stores.append(self.find_storage(a))
+        self.stores.append(self.find_storage(b))
+        for s in self.stores :
+            if (s is None) : return
         self.set_diff_titles(a, b)
         row = 0
         alternateTranslations = 0
         aOnly = 0
         bOnly = 0
+        unit_count = 0
         # iterate over left hand side
         for i in self.stores[0].unit_iter():
             bUnit = self.find_unit(1, i)
             state = UnitState.MODE_DIFF
+            unit_count += 1
+            if (unit_count % 100 == 0) :
+                print unit_count
             if (bUnit is not None) :
                 for plural in range(max(len(i.gettarget().strings), len(bUnit.gettarget().strings))):
                     if plural < len(i.gettarget().strings) :
@@ -186,9 +205,11 @@ class PODiff(object) :
         self.stores = []
         self.unresolved = []
         self.resolved = []
-        self.stores.append(translate.storage.factory.getobject(base))
-        self.stores.append(translate.storage.factory.getobject(a))
-        self.stores.append(translate.storage.factory.getobject(b))
+        self.stores.append(self.find_storage(base))
+        self.stores.append(self.find_storage(a))
+        self.stores.append(self.find_storage(b))
+        for s in self.stores :
+            if (s is None) : return
         mergeStore = object.__new__(self.stores[0].__class__, merge, "UTF-8")
         mergeStore.__init__(merge, "UTF-8")
         mergeStore.filename = merge
@@ -206,9 +227,13 @@ class PODiff(object) :
         new_in_b = 0
         removed = 0
         row = 0
+        unit_count = 0
         for base_unit in self.stores[Side.BASE].unit_iter():
             a_unit = self.find_unit(Side.A, base_unit)
             b_unit = self.find_unit(Side.B, base_unit)
+            unit_count += 1
+            if (unit_count % 10 == 0) :
+                print unit_count
             if (a_unit is None) : 
                 if (b_unit is None) :
                     # deleted in both, so don't merge into result

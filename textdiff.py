@@ -97,9 +97,11 @@ class LcsData :
 
 def longest_common_subsequence(a, b, a_offset, b_offset, a_end, b_end) :
 #    lcs[0:a_end - a_offset + 1][0:b_end - b_offset + 1] = 0
+    #print u'"{0}" "{1}"'.format(a,b)
     lcs = [[0] ] 
     data = LcsData()
     data.a_clusters = []
+    data.b_clusters = []
     a_pos = a_offset
     b_pos = b_offset
     i = 1
@@ -118,13 +120,17 @@ def longest_common_subsequence(a, b, a_offset, b_offset, a_end, b_end) :
         lcs[0].append(0)
         i+= 1
     data.b_clusters.append(b_pos)
+    #print len(lcs[0]), b_end - b_offset, len(data.b_clusters)
 
     a_pos = a_offset
-    for r in range(1, a_end - a_offset + 1) :
+    for r in range(1, len(data.a_clusters)) :
         b_pos = b_offset
         a_cluster = next_cluster(a, a_pos)
-        for c in range(1, b_end - b_offset + 1) :
+        for c in range(1, len(data.b_clusters)) :
             b_cluster = next_cluster(b, b_pos)
+            # print c, len(lcs[r-1])
+            assert(c < len(lcs[r-1]))
+            assert(r < len(lcs))
             if (a_cluster == b_cluster) :
                 lcs[r].append(lcs[r-1][c-1] + 1)
             else :
