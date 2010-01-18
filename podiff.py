@@ -46,24 +46,34 @@ class PODiff(object) :
         self.dirty = [False, False]
 
     def find_unit(self, side, unit) :
-        units = self.stores[side].findunits(unit.source)
-        if units is None or (len(units) == 0) : return None
-        # if (len(units) < 2) : return units[0]
-        # multiple units, try to find one with the same 
+        # units = self.stores[side].findunits(unit.source)
+        if unit.source not in self.source_dict :
+            return None
+        context_dict = self.source_dict[unit.getsource()]
         ctxt = unit.getcontext()
-        for u in units:
-            if u.getcontext() == ctxt :
-                return u
-        return None
-    
-    #TODO
+        if ctxt not in context_dict : return None
+        return context_dict[ctxt][side]
+
     def index_storage(self) :
-        for s in self.stores :
-            for unit in s.unit_iter():
-                pass
-        pass
+        """Index the source strings for all of the input files for faster lookup."""
+        self.source_dict = {}
+        for i in range(len(self.stores)) :
+            for unit in self.stores[i].unit_iter():
+                if unit.getsource() in self.source_dict :
+                    context = self.source_dict[unit.getsource()]
+                else :
+                    context = {}
+                if unit.getcontext() in context :
+                    units = context[unit.getcontext()]
+                else :
+                    units = [None, None, None, None]
+                units[i] = unit
+                context[unit.getcontext()] = units
+                self.source_dict[unit.getsource()] = context
         
-    def find_storage(self, filename) :
+    def open_storage(self, filename) :
+        """Opens translation storage from file. First of all it tries to find a storage by the file extension, 
+        if that fails, it defaults to trying to parse it as a po file."""
         try :
             return translate.storage.factory.getobject(filename)
         except ValueError :
@@ -74,12 +84,14 @@ class PODiff(object) :
         return None
 
     def diff(self, a, b) :
+        """Compare translation units in the files a and b."""
         self.clear()
         self.stores = []
-        self.stores.append(self.find_storage(a))
-        self.stores.append(self.find_storage(b))
+        self.stores.append(self.open_storage(a))
+        self.stores.append(self.open_storage(b))
         for s in self.stores :
             if (s is None) : return
+        self.index_storage()
         self.set_diff_titles(a, b)
         row = 0
         alternateTranslations = 0
@@ -92,7 +104,7 @@ class PODiff(object) :
             state = UnitState.MODE_DIFF
             unit_count += 1
             if (unit_count % 100 == 0) :
-                print unit_count
+                print sys.stderr.write('.')
             if (bUnit is not None) :
                 for plural in range(max(len(i.gettarget().strings), len(bUnit.gettarget().strings))):
                     if plural < len(i.gettarget().strings) :
@@ -128,6 +140,7 @@ class PODiff(object) :
         msg = _("{0} differences, {1} only in a, {2} only in b").format(alternateTranslations, aOnly, bOnly)
         self.show_status(msg)
         self.set_total_units(row)
+        sys.stderr.write('\n')
         print >> sys.stderr, msg
         
     def merge_from(self, from_side, from_row, from_unit, plural, to_side=None) :
@@ -205,11 +218,12 @@ class PODiff(object) :
         self.stores = []
         self.unresolved = []
         self.resolved = []
-        self.stores.append(self.find_storage(base))
-        self.stores.append(self.find_storage(a))
-        self.stores.append(self.find_storage(b))
+        self.stores.append(self.open_storage(base))
+        self.stores.append(self.open_storage(a))
+        self.stores.append(self.open_storage(b))
         for s in self.stores :
             if (s is None) : return
+        self.index_storage()
         mergeStore = object.__new__(self.stores[0].__class__, merge, "UTF-8")
         mergeStore.__init__(merge, "UTF-8")
         mergeStore.filename = merge
@@ -232,8 +246,8 @@ class PODiff(object) :
             a_unit = self.find_unit(Side.A, base_unit)
             b_unit = self.find_unit(Side.B, base_unit)
             unit_count += 1
-            if (unit_count % 10 == 0) :
-                print unit_count
+            if (unit_count % 100 == 0) :
+                sys.stderr.write('.')
             if (a_unit is None) : 
                 if (b_unit is None) :
                     # deleted in both, so don't merge into result
@@ -506,4 +520,6 @@ class PODiff(object) :
         msg = _("{0} unresolved; {1} resolved from A; {2} resolved from B; {3} new in A; {4} new in B; {5} removed").format(len(self.unresolved), resolved_from_a, resolved_from_b, new_in_a, new_in_b, removed)
         self.show_status(msg)
         self.set_total_units(row)
+        sys.stderr.write('\n')
+
        

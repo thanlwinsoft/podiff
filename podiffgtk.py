@@ -39,6 +39,10 @@ class PoUnitGtk(object) :
     def __init__(self, side, state, plural):
         self.side = side
         self.plural = plural
+        self.scrolled = gtk.ScrolledWindow()
+        self.scrolled.set_property("hscrollbar-policy", gtk.POLICY_AUTOMATIC)
+        self.scrolled.set_property("vscrollbar-policy", gtk.POLICY_AUTOMATIC)
+        self.viewport = gtk.Viewport()
         self.frame = gtk.Frame()
         self.frame.connect("scroll-event", self.po_diff.unitVscrollbar_scroll_event_cb)
         self.vbox = gtk.VBox(False, 2)
@@ -86,7 +90,7 @@ class PoUnitGtk(object) :
         self.copy_button.show()
 
         if (state & podiff.UnitState.MODE_MERGE) :
-            self.frame.set_size_request(125, -1)
+            self.scrolled.set_size_request(125, -1)
             if (self.side == podiff.Side.BASE or self.side == podiff.Side.A or self.side == podiff.Side.B) :
                 self.copy_button.set_label(">>")
                 arrow = gtk.Arrow(gtk.ARROW_RIGHT, gtk.SHADOW_IN)
@@ -105,7 +109,7 @@ class PoUnitGtk(object) :
                 self.copy_button.hide()
                 pass            
         else :
-            self.frame.set_size_request(250, -1)
+            self.scrolled.set_size_request(250, -1)
             if (self.side == podiff.Side.LEFT): 
                 self.copy_button.set_label(">>")
                 arrow = gtk.Arrow(gtk.ARROW_RIGHT, gtk.SHADOW_IN)
@@ -128,6 +132,10 @@ class PoUnitGtk(object) :
         self.vbox.add(self.target)
         self.vbox.show()
         self.title_box.show()
+        self.frame.show()
+        self.viewport.add(self.frame)
+        self.viewport.show()
+        self.scrolled.add(self.viewport)
 
     def set_unit(self, unit, cf_units=None, modified=False) :
 #        self.source_buffer.set_text(unit.getid())
@@ -180,7 +188,8 @@ class PoUnitGtk(object) :
 
     def find_frame_pos(self, widget) :
         frame = widget.get_parent()
-        while (not isinstance(frame, gtk.Frame)) : frame = frame.get_parent()
+        #while (not isinstance(frame, gtk.Frame)) : frame = frame.get_parent()
+        while (not isinstance(frame, gtk.ScrolledWindow)) : frame = frame.get_parent()
         side = frame.get_parent().child_get_property(frame, "left-attach")
         row = frame.get_parent().child_get_property(frame, "top-attach")-1
         return (side, row)
@@ -221,7 +230,7 @@ class PoUnitGtk(object) :
 class PoDiffGtk (podiff.PODiff):
     version = "0.0.1"
     title_ids = ["baseTitle","diffTitleA", "diffTitleB", "mergeTitle"]
-    UNITS_PER_PAGE = 5
+    UNITS_PER_PAGE = 4
     def __init__(self):
         podiff.PODiff.__init__(self)
         self.builder = gtk.Builder()
@@ -273,12 +282,12 @@ class PoDiffGtk (podiff.PODiff):
     def show_side(self, side, row, unit, cf_unit, modified, state, plural) :
         shown = False
         if (side,row) in self.unit_dict:
-            self.diff_table.remove(self.unit_dict[(side, row)].frame)
-            shown = self.unit_dict[(side, row)].frame
+            self.diff_table.remove(self.unit_dict[(side, row)].scrolled)
+            shown = self.unit_dict[(side, row)].scrolled
             del self.unit_dict[(side, row)]
         diff = PoUnitGtk(side, state, plural)
         self.unit_dict[(side, row)] = diff
-        self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row+1, bottom_attach=row+2)
+        self.diff_table.attach(diff.scrolled, left_attach=side, right_attach=side+1, top_attach=row+1, bottom_attach=row+2, xoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK, yoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK)
         diff.set_unit(unit, cf_unit, modified)
         sb = self.builder.get_object("unitVscrollbar")
         min_visible_row, max_visible_row = self.page_range()
@@ -286,12 +295,12 @@ class PoDiffGtk (podiff.PODiff):
             if row in self.unresolved :
                 i = self.unresolved.index(row)
                 if (i >= min_visible_row and i < max_visible_row) :
-                    diff.frame.show()
+                    diff.scrolled.show()
         else :
             if (row >= min_visible_row and row < max_visible_row) :
-                    diff.frame.show()
+                    diff.scrolled.show()
         # if (state & podiff.UnitState.AMBIGUOUS) :
-        # diff.frame.show()
+        # diff.scrolled.show()
 
     def set_total_units(self, row_count) :
         self.unit_count = row_count
@@ -314,13 +323,13 @@ class PoDiffGtk (podiff.PODiff):
                 for col in range(0,4) :
                     key = (col, row)
                     if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.hide()
+                        self.unit_dict[(col, row)].scrolled.hide()
         else :
             for row in range(min_show, max_show) :
                 for col in range(0,4) :
                     key = (col, row)
                     if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.hide()
+                        self.unit_dict[(col, row)].scrolled.hide()
 
     def show_units(self, value) :
         min_show, max_show = self.page_range(int(value))
@@ -332,25 +341,27 @@ class PoDiffGtk (podiff.PODiff):
                 for col in range(0,4) :
                     key = (col, row)
                     if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.show()
+                        self.unit_dict[(col, row)].scrolled.show()
         else :
             for row in range(min_show, max_show) :
                 for col in range(0,4) :
                     key = (col, row)
                     if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.show()
+                        self.unit_dict[(col, row)].scrolled.show()
         self.prev_page = value
         return True    
 
     def unitVscrollbar_value_changed_cb(self, widget, data=None) :
-        if self.scrolling : return False
+        if self.scrolling :
+            print "already scrolling"
+            return False
         else :
             self.scrolling = True
             print "scrollbar value changed" + str(widget.get_value())
             self.hide_units()
             self.show_units(int(widget.get_value()))
             self.scrolling = False
-        return True
+        return True # prevent propagation
 
     def show_left(self, row, unit, cf_unit, modified, state, plural) :
         self.show_side(podiff.Side.LEFT, row, unit, cf_unit, modified, state, plural)
