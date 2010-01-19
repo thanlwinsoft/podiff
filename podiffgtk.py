@@ -674,7 +674,7 @@ http://www.gnu.org/licenses/"""))
             if (side, row)  in self.unit_dict :
                 po_unit = self.unit_dict[(side, row)]
                 if po_unit.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
-                    print "Found at ", text, side, row
+                    # print "Found at ", text, side, row
                     ai = search_combo.get_active_iter()
                     if ai is None :
                         search_combo.prepend_text(text)
