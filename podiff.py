@@ -58,6 +58,7 @@ class PODiff(object) :
         """Index the source strings for all of the input files for faster lookup."""
         self.source_dict = {}
         for i in range(len(self.stores)) :
+            if self.stores[i] is None : continue
             for unit in self.stores[i].unit_iter():
                 if unit.getsource() in self.source_dict :
                     context = self.source_dict[unit.getsource()]
@@ -86,11 +87,11 @@ class PODiff(object) :
     def diff(self, a, b) :
         """Compare translation units in the files a and b."""
         self.clear()
-        self.stores = []
+        self.stores = [None]
         self.stores.append(self.open_storage(a))
         self.stores.append(self.open_storage(b))
-        for s in self.stores :
-            if (s is None) : return
+        if (self.stores[Side.A] is None) : return
+        if (self.stores[Side.B] is None) : return
         self.index_storage()
         self.set_diff_titles(a, b)
         row = 0
@@ -99,12 +100,12 @@ class PODiff(object) :
         bOnly = 0
         unit_count = 0
         # iterate over left hand side
-        for i in self.stores[0].unit_iter():
-            bUnit = self.find_unit(1, i)
+        for i in self.stores[Side.A].unit_iter():
+            bUnit = self.find_unit(Side.B, i)
             state = UnitState.MODE_DIFF
             unit_count += 1
             if (unit_count % 100 == 0) :
-                print sys.stderr.write('.')
+                sys.stderr.write('.')
             if (bUnit is not None) :
                 for plural in range(max(len(i.gettarget().strings), len(bUnit.gettarget().strings))):
                     if plural < len(i.gettarget().strings) :
@@ -130,8 +131,8 @@ class PODiff(object) :
                     aOnly+=1
             
 
-        for i in self.stores[1].unit_iter():
-            a = self.find_unit(0, i)
+        for i in self.stores[Side.B].unit_iter():
+            a = self.find_unit(Side.A, i)
             if a is None : # b only
                 unit_count += 1
                 for plural in range(len(i.gettarget().strings)) :
@@ -144,7 +145,7 @@ class PODiff(object) :
         sys.stderr.write('\n')
         print >> sys.stderr, msg
         
-    def merge_from(self, from_side, from_row, from_unit, plural, to_side=None) :
+    def merge_from(self, from_side, from_row, unit_index, from_unit, plural, to_side=None) :
         if to_side is None:
             if len(self.stores) == 4 :
                 to_side = Side.MERGE
@@ -152,7 +153,7 @@ class PODiff(object) :
             else :
                 if from_side == Side.RIGHT : to_side = Side.LEFT
                 else : to_side = Side.RIGHT
-                to_unit = self.find_unit(to_side-1, from_unit)
+                to_unit = self.find_unit(to_side, from_unit)
         if (to_unit is None) :
             if (isinstance(from_unit, translate.storage.pypo.pounit)):
                 to_unit = translate.storage.pypo.pounit(from_unit.source)
@@ -188,14 +189,18 @@ class PODiff(object) :
             to_unit.markfuzzy(False)
         for loc in from_unit.getlocations() :
             to_unit.addlocation(loc)
-        self.dirty[to_side] = True
+        if (len(self.stores) == 4) :
+            self.dirty[to_side] = True
+        else :
+            self.dirty[to_side] = True
+        self.on_dirty()
         if to_side < Side.MERGE :
             state = UnitState.MODE_DIFF
-            self.show_side(to_side, from_row, to_unit, None, True, state, plural)
+            self.show_side(to_side, from_row, unit_index, to_unit, None, True, state, plural)
         else :
             state = UnitState.MODE_MERGE | UnitState.RESOLVED
             # show it before we remove from the unresolved list
-            self.show_side(to_side, from_row, to_unit, None, True, state, plural)
+            self.show_side(to_side, from_row, unit_index, to_unit, None, True, state, plural)
             if from_row in self.unresolved :
                 self.resolved.append(from_row)
                 msg = _("{0} unresolved").format(len(self.unresolved) - len(self.resolved))

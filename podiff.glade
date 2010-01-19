@@ -80,39 +80,58 @@
                 <property name="visible">True</property>
                 <property name="label" translatable="yes">_Edit</property>
                 <property name="use_underline">True</property>
+                <signal name="activate" handler="editMenuItem_activate_cb"/>
                 <child type="submenu">
                   <object class="GtkMenu" id="editMenu">
                     <property name="visible">True</property>
                     <child>
-                      <object class="GtkImageMenuItem" id="imagemenuitem6">
+                      <object class="GtkImageMenuItem" id="imagemenuitemCut">
                         <property name="label">gtk-cut</property>
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="activate" handler="imagemenuitemCut_activate_cb"/>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkImageMenuItem" id="imagemenuitem7">
+                      <object class="GtkImageMenuItem" id="imagemenuitemCopy">
                         <property name="label">gtk-copy</property>
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="activate" handler="imagemenuitemCopy_activate_cb"/>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkImageMenuItem" id="imagemenuitem8">
+                      <object class="GtkImageMenuItem" id="imagemenuitemPaste">
                         <property name="label">gtk-paste</property>
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="activate" handler="imagemenuitemPaste_activate_cb"/>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkImageMenuItem" id="imagemenuitem9">
+                      <object class="GtkImageMenuItem" id="imagemenuitemDelete">
                         <property name="label">gtk-delete</property>
                         <property name="visible">True</property>
                         <property name="use_underline">True</property>
                         <property name="use_stock">True</property>
+                        <signal name="activate" handler="imagemenuitemDelete_activate_cb"/>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkSeparatorMenuItem" id="separatormenuitem2">
+                        <property name="visible">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkMenuItem" id="menuitemSearch">
+                        <property name="visible">True</property>
+                        <property name="tooltip_text" translatable="yes">Search (&amp; Replace)</property>
+                        <property name="label" translatable="yes">Search...</property>
+                        <property name="use_underline">True</property>
+                        <signal name="button_release_event" handler="menuitemSearch_button_release_event_cb"/>
                       </object>
                     </child>
                   </object>
@@ -124,6 +143,21 @@
                 <property name="visible">True</property>
                 <property name="label" translatable="yes">_View</property>
                 <property name="use_underline">True</property>
+                <signal name="activate" handler="viewMenuItem_activate_cb"/>
+                <child type="submenu">
+                  <object class="GtkMenu" id="menuView">
+                    <property name="visible">True</property>
+                    <child>
+                      <object class="GtkCheckMenuItem" id="menuitemFilterResolved">
+                        <property name="visible">True</property>
+                        <property name="tooltip_text" translatable="yes">Filter resolved entries.</property>
+                        <property name="label" translatable="yes">_Filter resolved</property>
+                        <property name="use_underline">True</property>
+                        <signal name="toggled" handler="menuitemFilterResolved_toggled_cb"/>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </child>
             <child>
@@ -180,6 +214,20 @@
                 <property name="stock_id">gtk-open</property>
                 <signal name="clicked" handler="toolbuttonOpen_clicked_cb"/>
                 <signal name="button_release_event" handler="toolbuttonOpen_button_release_event_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="homogeneous">True</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkToolButton" id="toolbuttonSearch">
+                <property name="visible">True</property>
+                <property name="tooltip_text" translatable="yes">Search</property>
+                <property name="label" translatable="yes">Search</property>
+                <property name="use_underline">True</property>
+                <property name="icon_name">edit-find</property>
+                <signal name="clicked" handler="toolbuttonSearch_clicked_cb"/>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -618,5 +666,257 @@
         </child>
       </object>
     </child>
+  </object>
+  <object class="GtkDialog" id="searchDialog">
+    <property name="border_width">5</property>
+    <property name="title" translatable="yes">Search and Replace</property>
+    <property name="destroy_with_parent">True</property>
+    <property name="icon">podiff.png</property>
+    <property name="type_hint">normal</property>
+    <signal name="focus_in_event" handler="searchDialog_focus_in_event_cb"/>
+    <signal name="focus_out_event" handler="searchDialog_focus_out_event_cb"/>
+    <child internal-child="vbox">
+      <object class="GtkVBox" id="dialog-vbox2">
+        <property name="visible">True</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child>
+          <object class="GtkVBox" id="vbox2">
+            <property name="visible">True</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkTable" id="table3">
+                <property name="visible">True</property>
+                <property name="n_rows">2</property>
+                <property name="n_columns">2</property>
+                <child>
+                  <object class="GtkLabel" id="searchLabel">
+                    <property name="visible">True</property>
+                    <property name="xalign">0</property>
+                    <property name="label" translatable="yes">Search for:</property>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkComboBoxEntry" id="searchComboboxentry">
+                    <property name="visible">True</property>
+                    <property name="has_focus">True</property>
+                    <property name="model">searchListstore</property>
+                    <property name="text_column">0</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="right_attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="replaceLabel">
+                    <property name="visible">True</property>
+                    <property name="xalign">0</property>
+                    <property name="label" translatable="yes">Replace with:</property>
+                  </object>
+                  <packing>
+                    <property name="top_attach">1</property>
+                    <property name="bottom_attach">2</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxEntry" id="replaceComboboxentry">
+                    <property name="visible">True</property>
+                    <property name="model">replaceListstore</property>
+                    <property name="text_column">0</property>
+                  </object>
+                  <packing>
+                    <property name="left_attach">1</property>
+                    <property name="right_attach">2</property>
+                    <property name="top_attach">1</property>
+                    <property name="bottom_attach">2</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkFrame" id="optionsFrame">
+                <property name="visible">True</property>
+                <property name="label_xalign">0</property>
+                <property name="shadow_type">none</property>
+                <child>
+                  <object class="GtkAlignment" id="alignment4">
+                    <property name="visible">True</property>
+                    <property name="left_padding">12</property>
+                    <child>
+                      <object class="GtkTable" id="table2">
+                        <property name="visible">True</property>
+                        <property name="n_rows">3</property>
+                        <property name="n_columns">2</property>
+                        <child>
+                          <object class="GtkCheckButton" id="checkbuttonMsgid">
+                            <property name="label" translatable="yes">Search in Message ID</property>
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">False</property>
+                            <property name="active">True</property>
+                            <property name="draw_indicator">True</property>
+                          </object>
+                        </child>
+                        <child>
+                          <object class="GtkCheckButton" id="checkbuttonContext">
+                            <property name="label" translatable="yes">Search in Context</property>
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">False</property>
+                            <property name="draw_indicator">True</property>
+                          </object>
+                          <packing>
+                            <property name="top_attach">1</property>
+                            <property name="bottom_attach">2</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkCheckButton" id="checkbuttonTranslation">
+                            <property name="label" translatable="yes">Search in Translation</property>
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">False</property>
+                            <property name="active">True</property>
+                            <property name="draw_indicator">True</property>
+                            <signal name="toggled" handler="checkbuttonTranslation_toggled_cb"/>
+                          </object>
+                          <packing>
+                            <property name="top_attach">2</property>
+                            <property name="bottom_attach">3</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkCheckButton" id="checkbuttonCase">
+                            <property name="label" translatable="yes">Case-sensitive</property>
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">False</property>
+                            <property name="draw_indicator">True</property>
+                          </object>
+                          <packing>
+                            <property name="left_attach">1</property>
+                            <property name="right_attach">2</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkCheckButton" id="checkbuttonBackwards">
+                            <property name="label" translatable="yes">Search backwards</property>
+                            <property name="visible">True</property>
+                            <property name="can_focus">True</property>
+                            <property name="receives_default">False</property>
+                            <property name="draw_indicator">True</property>
+                          </object>
+                          <packing>
+                            <property name="left_attach">1</property>
+                            <property name="right_attach">2</property>
+                            <property name="top_attach">1</property>
+                            <property name="bottom_attach">2</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <placeholder/>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child type="label">
+                  <object class="GtkLabel" id="optionsFrameLabel">
+                    <property name="visible">True</property>
+                    <property name="xpad">2</property>
+                    <property name="label" translatable="yes">&lt;b&gt;Options&lt;/b&gt;</property>
+                    <property name="use_markup">True</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child internal-child="action_area">
+          <object class="GtkHButtonBox" id="dialog-action_area2">
+            <property name="visible">True</property>
+            <property name="layout_style">end</property>
+            <child>
+              <object class="GtkButton" id="searchButton">
+                <property name="label" translatable="yes">Search</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="can_default">True</property>
+                <property name="has_default">True</property>
+                <property name="receives_default">True</property>
+                <signal name="clicked" handler="searchButton_clicked_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="replaceButton">
+                <property name="label" translatable="yes">Replace</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <signal name="clicked" handler="replaceButton_clicked_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="closeButton">
+                <property name="label">gtk-close</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <signal name="clicked" handler="closeButton_clicked_cb"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="pack_type">end</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+    <action-widgets>
+      <action-widget response="1">searchButton</action-widget>
+      <action-widget response="0">replaceButton</action-widget>
+      <action-widget response="-1">closeButton</action-widget>
+    </action-widgets>
+  </object>
+  <object class="GtkListStore" id="searchListstore">
+    <columns>
+      <!-- column-name search -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
+  <object class="GtkListStore" id="replaceListstore">
+    <columns>
+      <!-- column-name replace -->
+      <column type="gchararray"/>
+    </columns>
   </object>
 </interface>

@@ -23,6 +23,7 @@ import pango
 import sys
 import os.path
 import gettext
+from translate.misc.multistring import multistring
 import translate.storage.factory
 
 import podiff
@@ -30,6 +31,16 @@ from textdiff import find_matches
 
 GETTEXT_DOMAIN='podiff'
 translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
+
+def find_frame_pos(widget) :
+    if widget is None : return None
+    frame = widget.get_parent()
+    while (not isinstance(frame, gtk.Frame)) :
+        frame = frame.get_parent()
+        if frame is None : return None
+    side = frame.get_parent().child_get_property(frame, "left-attach")
+    row = frame.get_parent().child_get_property(frame, "top-attach")-1
+    return (side, row)
 
 
 class PoUnitGtk(object) :
@@ -79,6 +90,7 @@ class PoUnitGtk(object) :
         else :
             self.target.set_tooltip_text(_("Target [msgstr]"))
         self.target.set_buffer(self.target_buffer)
+        self.target.set_editable(True)
         self.target.show()
         self.context = gtk.TextView()
         self.context_buffer = gtk.TextBuffer()
@@ -145,11 +157,16 @@ class PoUnitGtk(object) :
     def set_unit(self, index, unit, cf_units=None, modified=False) :
 #        self.source_buffer.set_text(unit.getid())
 #        self.target_buffer.set_text(unit.gettarget())
+        self.unit_index = index
         self.unit = unit
         if (unit.hasplural()) :
             self.id_label.set_text(_("{0:d} [{1:d}]").format(index, self.plural))
         else :
             self.id_label.set_text(str(index))
+        comments = str(unit.getnotes())
+        for l in unit.getlocations() :
+            comments += "\n" + l
+        self.id_label.set_tooltip_text(comments)
         if (self.plural == 0) :
             self.source_buffer.set_text(unit.source)
         else :
@@ -195,21 +212,14 @@ class PoUnitGtk(object) :
         else :
             self.target.modify_text(gtk.STATE_NORMAL, gtk.gdk.Color(0, 0, 0))
 
-    def find_frame_pos(self, widget) :
-        frame = widget.get_parent()
-        while (not isinstance(frame, gtk.Frame)) : frame = frame.get_parent()
-        side = frame.get_parent().child_get_property(frame, "left-attach")
-        row = frame.get_parent().child_get_property(frame, "top-attach")-1
-        return (side, row)
-
     def copy_button_release_event_cb(self, widget, data=None) :
-        (side, row) = self.find_frame_pos(widget)
+        (side, row) = find_frame_pos(widget)
         if (self.po_diff is not None) :
             poUnit = self.po_diff.unit_dict[(side, row)]
-            self.po_diff.merge_from(side, row, poUnit.unit, poUnit.plural)
+            self.po_diff.merge_from(side, row, poUnit.unit_index, poUnit.unit, poUnit.plural)
     
     def insert_text_event_cb(self, textbuffer, iter, text, length, user_param1=None) :
-        (side, row) = self.find_frame_pos(user_param1)
+        (side, row) = find_frame_pos(user_param1)
         poUnit = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
         poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
@@ -220,20 +230,68 @@ class PoUnitGtk(object) :
 #        textbuffer.apply_tag_by_name("edit", iter, iter)
     
     def changed_event_cb(self, textbuffer, user_param1=None) :
-        (side, row) = self.find_frame_pos(user_param1)
+        (side, row) = find_frame_pos(user_param1)
         poUnit = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
         poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
         self.po_diff.on_dirty()
         
     def delete_range_event_cb(self, textbuffer, start, end, user_param1=None) :
-        (side, row) = self.find_frame_pos(user_param1)
+        (side, row) = find_frame_pos(user_param1)
         poUnit = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
         poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
         self.po_diff.on_dirty()
         # the event seems to be before the change, so we can't modify it
         #textbuffer.apply_tag_by_name("edit", start, end)
+        
+    def find_in_buffer(self, view, text_buffer, text, case_sensitive, backwards, bounds) :
+        haystack = text_buffer.get_text(bounds[0], bounds[1])
+        if not case_sensitive : haystack = haystack.lower()
+        offset = len(text_buffer.get_text(text_buffer.get_start_iter(), bounds[0]))
+        if backwards :
+            index = haystack.rfind(text)
+            if (index < 0) : return False
+            bound = text_buffer.get_iter_at_offset(offset + index + len(text))
+            ins = text_buffer.get_iter_at_offset(offset + index)
+        else :
+            index = haystack.find(text)
+            if (index < 0) : return False
+            ins = text_buffer.get_iter_at_offset(offset + index + len(text))
+            bound = text_buffer.get_iter_at_offset(offset + index)
+        text_buffer.select_range(ins, bound)
+        side, row = find_frame_pos(view)
+        self.po_diff.builder.get_object("toolbuttonFilterResolved").set_active(False)
+        sb = self.po_diff.builder.get_object("unitVscrollbar")
+        if (sb.get_value() > row or sb.get_value() + PoDiffGtk.UNITS_PER_PAGE <= row) :
+            sb.set_value(row)
+        view.grab_focus()
+        if view.get_editable() :
+            self.po_diff.builder.get_object("replaceButton").set_sensitive(True)
+        else :
+            self.po_diff.builder.get_object("replaceButton").set_sensitive(False)
+        return True
+        
+    def find(self, text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
+        started = False
+        if (not isinstance(focus, gtk.TextView)) :
+            started = True
+        text_data = []
+        if (use_context) : text_data.append([self.context, self.context_buffer])
+        if (use_msgid) : text_data.append([self.source, self.source_buffer])
+        if (use_translation) : text_data.append([self.target, self.target_buffer])
+        if (backwards) : text_data.reverse()
+        for view, text_buffer in text_data :
+            bounds = [text_buffer.get_start_iter(), text_buffer.get_end_iter()] 
+            if view.is_focus() :
+                started = True
+                if (backwards) :
+                    bounds[1] = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+                else :
+                    bounds[0] = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+            if not started : continue
+            if self.find_in_buffer(view, text_buffer, text, case_sensitive, backwards, bounds) : return True
+        return False
 
 class PoDiffGtk (podiff.PODiff):
     version = "0.0.1"
@@ -255,6 +313,7 @@ class PoDiffGtk (podiff.PODiff):
         self.stores = []
         self.clear()
         self.scrolling = False
+        self.search_iter = None
 
     def main(self):
         gtk.main()
@@ -403,6 +462,7 @@ class PoDiffGtk (podiff.PODiff):
         t.hide()        
 
     def set_merge_titles(self, base, a, b, merge) :
+        self.builder.get_object("toolbuttonFilterResolved").set_sensitive(True)
         for label, text in zip(self.title_ids, [base, a, b, merge]):
             t = self.builder.get_object(label)
             t.set_text(text)
@@ -531,7 +591,9 @@ http://www.gnu.org/licenses/"""))
         for i in range(len(self.dirty)) :
             self.dirty[i] = False
         self.unit_dict = {}
+        self.search_iter = None
         self.builder.get_object("toolbuttonFilterResolved").set_active(False)
+        self.builder.get_object("toolbuttonFilterResolved").set_sensitive(False)
 
     def toolbuttonOpen_clicked_cb(self, button, user=None) :
         self.openFileDialog()
@@ -574,6 +636,178 @@ http://www.gnu.org/licenses/"""))
         if (event.direction & gtk.gdk.SCROLL_DOWN) : 
             sb.set_value(sb.get_value() + sb.get_adjustment().get_step_increment())
             return True
+
+    def menuitemSearch_button_release_event_cb(self, button, data=None) :
+        dialog = self.builder.get_object("searchDialog")
+        dialog.present()
+
+    def closeButton_clicked_cb(self, button, data=None) :
+        dialog = self.builder.get_object("searchDialog")
+        dialog.hide()
+
+    def search(self) :
+        """Search for a string within the units, starting at currently selected unit."""
+        if self.unit_count == 0 : return False
+        search_combo = self.builder.get_object("searchComboboxentry")
+        text = unicode(search_combo.get_active_text())
+        use_context = self.builder.get_object("checkbuttonContext").get_active()
+        use_msgid = self.builder.get_object("checkbuttonMsgid").get_active()
+        use_translation = self.builder.get_object("checkbuttonTranslation").get_active()
+        case_sensitive = self.builder.get_object("checkbuttonCase").get_active()
+        backwards = self.builder.get_object("checkbuttonBackwards").get_active()
+        if not (use_context or use_msgid or use_translation) :
+            self.show_warning(_("Nothing to search. Please select the fields which you want to search."))
+            return False
+        if not case_sensitive :
+            text = text.lower()
+        if backwards : step = -1
+        else : step = 1
+        focus = self.win.get_focus()
+        from_unit = find_frame_pos(focus)
+        if (from_unit is None) :
+            from_unit = (0, 0)
+            side = podiff.Side.BASE
+            row = 0
+        else :
+            side, row = from_unit
+        while (True) :
+            if (side, row)  in self.unit_dict :
+                po_unit = self.unit_dict[(side, row)]
+                if po_unit.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
+                    print "Found at ", text, side, row
+                    ai = search_combo.get_active_iter()
+                    if ai is None :
+                        search_combo.prepend_text(text)
+                        search_combo.set_active_iter(search_combo.get_model().get_iter_first())
+                    return True
+            side += step
+            if (side < 0) :
+                side = podiff.Side.MERGE
+                row += step
+            else :
+                if side > podiff.Side.MERGE :
+                    side = podiff.Side.BASE
+                    row += step
+            if (row < 0) : row = self.unit_count - 1
+            if (row >= self.unit_count) : row = 0
+            focus = None
+            if (from_unit == (side, row)) : break
+        print "Nothing found"
+        return False
+
+    def replace(self) :
+        search_combo = self.builder.get_object("searchComboboxentry")
+        replace_combo = self.builder.get_object("replaceComboboxentry")
+        text = unicode(search_combo.get_active_text())
+        replacement = unicode(replace_combo.get_active_text())
+        case_sensitive = self.builder.get_object("checkbuttonCase").get_active()
+        if not case_sensitive : text = text.lower()
+        focus = self.win.get_focus()
+        from_unit = find_frame_pos(focus)
+        if from_unit is not None and isinstance(focus, gtk.TextView) and focus.get_editable():
+            text_buffer = focus.get_buffer()
+            start = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+            end = text_buffer.get_iter_at_mark(text_buffer.get_selection_bound())
+            if unicode(text_buffer.get_text(start, end)) == text :
+#                text_buffer.delete_selection(True, True)
+                text_buffer.delete_interactive(start, end, True)
+                text_buffer.insert_interactive_at_cursor(replacement, True)
+                ai = replace_combo.get_active_iter()
+                if ai is None :
+                    replace_combo.prepend_text(replacement)
+                    replace_combo.set_active_iter(replace_combo.get_model().get_iter_first())    
+                return True
+        return False
+
+    def searchButton_clicked_cb(self, button, data=None) :
+        try :
+            self.search()
+        except Exception as e:
+            print "Exception occured during search: " + str(e)
+            tb = sys.exc_traceback
+            while tb is not None :
+                print _("{0} line {1}\t in {2}").format(tb.tb_frame.f_code.co_filename, tb.tb_lineno, tb.tb_frame.f_code.co_name)
+                tb = tb.tb_next
+
+    def toolbuttonSearch_clicked_cb(self, button, data=None) :
+        return self.menuitemSearch_button_release_event_cb(button, data)
+        
+    def replaceButton_clicked_cb(self, button, data=None) :
+        if not self.replace() :
+            self.search() and self.replace()
+        
+    def searchDialog_focus_in_event_cb(self, widget, data=None) :
+        dialog = self.builder.get_object("searchDialog")
+        dialog.set_opacity(1.0)
+
+    def searchDialog_focus_out_event_cb(self, widget, data=None) :
+        dialog = self.builder.get_object("searchDialog")
+        dialog.set_opacity(0.7)
+
+    def checkbuttonTranslation_toggled_cb(self, widget, data=None):
+        if widget.get_active() :
+            self.builder.get_object("replaceComboboxentry").set_sensitive(True)
+        else :
+            self.builder.get_object("replaceComboboxentry").set_sensitive(False)
+
+    def editMenuItem_activate_cb(self, menu, data=None) :
+        focus = self.win.get_focus()
+        if isinstance(focus, gtk.TextView):
+            if focus.get_buffer().get_has_selection() :
+                self.builder.get_object("imagemenuitemCopy").set_sensitive(True)
+            else :
+                self.builder.get_object("imagemenuitemCopy").set_sensitive(False)
+            if focus.get_editable() :
+                self.builder.get_object("imagemenuitemPaste").set_sensitive(True)
+                if focus.get_buffer().get_has_selection() :
+                    self.builder.get_object("imagemenuitemCut").set_sensitive(True)
+                    self.builder.get_object("imagemenuitemDelete").set_sensitive(True)
+                else :
+                    self.builder.get_object("imagemenuitemCut").set_sensitive(False)
+                    self.builder.get_object("imagemenuitemDelete").set_sensitive(False)                    
+            else :
+                self.builder.get_object("imagemenuitemCut").set_sensitive(False)
+                self.builder.get_object("imagemenuitemDelete").set_sensitive(False)
+                self.builder.get_object("imagemenuitemPaste").set_sensitive(False)
+        else :
+            self.builder.get_object("imagemenuitemCopy").set_sensitive(False)
+            self.builder.get_object("imagemenuitemCut").set_sensitive(False)
+            self.builder.get_object("imagemenuitemDelete").set_sensitive(False)
+            self.builder.get_object("imagemenuitemPaste").set_sensitive(False)
+
+    def imagemenuitemDelete_activate_cb(self, menu, data=None) :
+        focus = self.win.get_focus()
+        if isinstance(focus, gtk.TextView) and focus.get_editable():
+            focus.get_buffer().delete_selection(True, True)
+
+    def imagemenuitemCut_activate_cb(self, menu, data=None) :
+        focus = self.win.get_focus()
+        if isinstance(focus, gtk.TextView) and focus.get_editable():
+            focus.get_buffer().cut_clipboard(gtk.Clipboard(), True)
+
+    def imagemenuitemCopy_activate_cb(self, menu, data=None) :
+        print "toggle copy"
+        focus = self.win.get_focus()
+        if isinstance(focus, gtk.TextView):
+            focus.get_buffer().copy_clipboard(gtk.Clipboard())
+        print str(focus)
+    
+    def imagemenuitemPaste_activate_cb(self, menu, data=None) :
+        focus = self.win.get_focus()
+        if isinstance(focus, gtk.TextView) and focus.get_editable():
+            focus.get_buffer().paste_clipboard(gtk.Clipboard(), None, True)
+
+    def viewMenuItem_activate_cb(self, menu, data=None) :
+        active = self.builder.get_object("toolbuttonFilterResolved").get_active()
+        menuitem = self.builder.get_object("menuitemFilterResolved")
+        menuitem.set_active(active)
+        if len(self.stores) == 4 :
+            menuitem.set_sensitive(True)
+        else :
+            menuitem.set_sensitive(False)
+
+    def menuitemFilterResolved_toggled_cb(self, menu, data=None) :
+        self.builder.get_object("toolbuttonFilterResolved").set_active(menu.get_active())
 
 # main method
 if __name__ == "__main__":
