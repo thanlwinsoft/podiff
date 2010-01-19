@@ -110,22 +110,22 @@ class PODiff(object) :
                     if plural < len(i.gettarget().strings) :
                         if plural < len(bUnit.gettarget().strings) :
                             if (i.gettarget().strings[plural] != bUnit.gettarget().strings[plural]): # a and b different
-                                self.show_left(row, i, [bUnit], False, state, plural)
-                                self.show_right(row, bUnit, [i], False, state, plural)
+                                self.show_left(row, unit_count, i, [bUnit], False, state, plural)
+                                self.show_right(row, unit_count, bUnit, [i], False, state, plural)
                                 row+=1
                                 alternateTranslations+=1
                         else :
-                            self.show_left(row, i, None, False, state, plural)
+                            self.show_left(row, unit_count, i, None, False, state, plural)
                             row+=1
                             aOnly+=1
                     else :
-                            self.show_right(row, bUnit, None, False, state, plural)
+                            self.show_right(row, unit_count, bUnit, None, False, state, plural)
                             row+=1
                             bOnly+=1
                         
             else : # a only
                 for plural in range(len(i.gettarget().strings)) :
-                    self.show_left(row, i, None, False, state, plural)
+                    self.show_left(row, unit_count, i, None, False, state, plural)
                     row+=1
                     aOnly+=1
             
@@ -133,8 +133,9 @@ class PODiff(object) :
         for i in self.stores[1].unit_iter():
             a = self.find_unit(0, i)
             if a is None : # b only
+                unit_count += 1
                 for plural in range(len(i.gettarget().strings)) :
-                    self.show_right(row, i, None, False, state, plural)
+                    self.show_right(row, unit_count, i, None, False, state, plural)
                     row+=1
                     bOnly+=1
         msg = _("{0} differences, {1} only in a, {2} only in b").format(alternateTranslations, aOnly, bOnly)
@@ -253,7 +254,7 @@ class PODiff(object) :
                     # deleted in both, so don't merge into result
                     state = UnitState.RESOLVED | UnitState.MODE_MERGE
                     for plural in range(len(base_unit.gettarget().strings)) :
-                        self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                        self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
                     removed += 1
                     row +=1
                     pass
@@ -269,20 +270,20 @@ class PODiff(object) :
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                                 self.unresolved.append(row)
                                 removed += 1
-                            self.show_side(Side.BASE, row, base_unit, [b_unit], False, state, plural)
-                            self.show_side(Side.B, row, b_unit, [base_unit], False, state, plural)
+                            self.show_side(Side.BASE, row, unit_count, base_unit, [b_unit], False, state, plural)
+                            self.show_side(Side.B, row, unit_count, b_unit, [base_unit], False, state, plural)
                             row+=1
                         else :
                             # plural doesn't exist in B
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE
-                            self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                            self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
                             row+=1
                     for plural in range(len(base_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
                         # plural only in B
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                         removed += 1
                         self.unresolved.append(row)
-                        self.show_side(Side.B, row, b_unit, None, False, state, plural)
+                        self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
                         row+=1
             else :
                 if (b_unit is None) :
@@ -297,20 +298,20 @@ class PODiff(object) :
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                                 self.unresolved.append(row)
                                 removed += 1
-                            self.show_side(Side.BASE, row, base_unit, [a_unit], False, state, plural)
-                            self.show_side(Side.A, row, a_unit, [base_unit], False, state, plural)
+                            self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit], False, state, plural)
+                            self.show_side(Side.A, row, unit_count, a_unit, [base_unit], False, state, plural)
                             row+=1
                         else :
                             # plural doesn't exist in A
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE
-                            self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                            self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
                             row+=1
                     for plural in range(len(base_unit.gettarget().strings), len(a_unit.gettarget().strings)) :
                         # plural only in A
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                         removed += 1
                         self.unresolved.append(row)
-                        self.show_side(Side.A, row, a_unit, None, False, state, plural)
+                        self.show_side(Side.A, row, unit_count, a_unit, None, False, state, plural)
                         row+=1
                 else : # normal case both a and b present
                     merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
@@ -323,15 +324,15 @@ class PODiff(object) :
                                 set_plural(merge_unit, None, plural)
                                 state = UnitState.RESOLVED | UnitState.MODE_MERGE
                                 removed += 1
-                                self.show_side(Side.BASE, row, base_unit, None, False, state, plural)
+                                self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
                                 row+=1
                             else :
                                 # b has plural, not a
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE | UnitState.USED_B
                                 self.unresolved.append(row)
                                 self.set_plural(merge_unit, b_unit, plural)
-                                self.show_side(Side.BASE, row, base_unit, [b_unit], False, state, plural)
-                                self.show_side(Side.B, row, b_unit, [base_unit], False, state, plural)
+                                self.show_side(Side.BASE, row, unit_count, base_unit, [b_unit], False, state, plural)
+                                self.show_side(Side.B, row, unit_count, b_unit, [base_unit], False, state, plural)
                                 new_in_b += 1
                                 row+=1
                         else :
@@ -340,8 +341,8 @@ class PODiff(object) :
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE | UnitState.USED_A
                                 self.unresolved.append(row)
                                 self.set_plural(merge_unit, a_unit, plural)
-                                self.show_side(Side.BASE, row, base_unit, [a_unit], False, state, plural)
-                                self.show_side(Side.A, row, a_unit, [base_unit], False, state, plural)
+                                self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit], False, state, plural)
+                                self.show_side(Side.A, row, unit_count, a_unit, [base_unit], False, state, plural)
                                 new_in_a += 1
                                 row+=1
                             else :
@@ -358,10 +359,10 @@ class PODiff(object) :
                                         resolved_from_b += 1
                                         if (plural == 0) : merge_unit.merge(b_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, b_unit, plural)
-                                        self.show_side(Side.BASE, row, base_unit, [b_unit], False, state, plural)
-                                        self.show_side(Side.A, row, a_unit, [b_unit], False, state, plural)
-                                        self.show_side(Side.B, row, b_unit, [base_unit], False, state, plural)
-                                        self.show_side(Side.MERGE, row, merge_unit, [base_unit], False, state, plural)
+                                        self.show_side(Side.BASE, row, unit_count, base_unit, [b_unit], False, state, plural)
+                                        self.show_side(Side.A, row, unit_count, a_unit, [b_unit], False, state, plural)
+                                        self.show_side(Side.B, row, unit_count, b_unit, [base_unit], False, state, plural)
+                                        self.show_side(Side.MERGE, row, unit_count, merge_unit, [base_unit], False, state, plural)
                                         row+=1
                                 else :
                                     # a modified
@@ -372,10 +373,10 @@ class PODiff(object) :
                                         resolved_from_a += 1
                                         if (plural == 0) : merge_unit.merge(a_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, a_unit, plural)
-                                        self.show_side(Side.BASE, row, base_unit, [a_unit], False, state, plural)
-                                        self.show_side(Side.A, row, a_unit, [base_unit], False, state, plural)
-                                        self.show_side(Side.B, row, b_unit, [base_unit, a_unit], False, state, plural)
-                                        self.show_side(Side.MERGE, row, merge_unit, [base_unit], False, state, plural)
+                                        self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit], False, state, plural)
+                                        self.show_side(Side.A, row, unit_count, a_unit, [base_unit], False, state, plural)
+                                        self.show_side(Side.B, row, unit_count, b_unit, [base_unit, a_unit], False, state, plural)
+                                        self.show_side(Side.MERGE, row, unit_count, merge_unit, [base_unit], False, state, plural)
                                         row+=1
                                     else :
                                         # both a and b changed
@@ -383,10 +384,10 @@ class PODiff(object) :
                                         self.unresolved.append(row)
                                         if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, base_unit, plural)
-                                        self.show_side(Side.BASE, row, base_unit, [a_unit, b_unit], False, state, plural)
-                                        self.show_side(Side.A, row, a_unit, [base_unit, b_unit], False, state, plural)
-                                        self.show_side(Side.B, row, b_unit, [base_unit, a_unit], False, state, plural)
-                                        self.show_side(Side.MERGE, row, merge_unit, [a_unit, b_unit], False, state, plural)
+                                        self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit, b_unit], False, state, plural)
+                                        self.show_side(Side.A, row, unit_count, a_unit, [base_unit, b_unit], False, state, plural)
+                                        self.show_side(Side.B, row, unit_count, b_unit, [base_unit, a_unit], False, state, plural)
+                                        self.show_side(Side.MERGE, row, unit_count, merge_unit, [a_unit, b_unit], False, state, plural)
                                         row+=1
                     for plural in range(len(base_unit.gettarget().strings), len(a_unit.gettarget().strings)) :
                         # plural in a, not in base
@@ -394,31 +395,31 @@ class PODiff(object) :
                             # plural not in B
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                             self.set_plural(merge_unit, a_unit, plural)
-                            self.show_side(Side.A, row, a_unit, None, False, state, plural)
-                            self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                            self.show_side(Side.A, row, unit_count, a_unit, None, False, state, plural)
+                            self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                             resolved_from_a += 1
                         else :
                             if (str(b_unit.gettarget().strings[plural]) == str(a_unit.gettarget().strings[plural])) :
                                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                                 self.set_plural(merge_unit, a_unit, plural)
-                                self.show_side(Side.A, row, a_unit, None, False, state, plural)
-                                self.show_side(Side.B, row, b_unit, None, False, state, plural)
-                                self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                                self.show_side(Side.A, row, unit_count, a_unit, None, False, state, plural)
+                                self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
+                                self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                                 resolved_from_a += 1
                             else :
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                                 self.unresolved.append(row)
                                 self.set_plural(merge_unit, a_unit, plural)
-                                self.show_side(Side.A, row, a_unit, [b_unit], False, state, plural)
-                                self.show_side(Side.B, row, b_unit, [a_unit], False, state, plural)
-                                self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                                self.show_side(Side.A, row, unit_count, a_unit, [b_unit], False, state, plural)
+                                self.show_side(Side.B, row, unit_count, b_unit, [a_unit], False, state, plural)
+                                self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                         row+=1
                     for plural in range(len(base_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
                         if plural >= len(a_unit.gettarget().strings) :
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                             self.set_plural(merge_unit, b_unit, plural)
-                            self.show_side(Side.B, row, a_unit, None, False, state, plural)
-                            self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                            self.show_side(Side.B, row, unit_count, a_unit, None, False, state, plural)
+                            self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                             resolved_from_b += 1
                             new_in_b += 1
                             row+=1
@@ -429,6 +430,7 @@ class PODiff(object) :
         for a_unit in self.stores[Side.A].unit_iter():
             base_unit = self.find_unit(Side.BASE, a_unit)
             if base_unit is not None : continue
+            unit_count += 1
             b_unit = self.find_unit(Side.B, a_unit)
             ambiguous_plural = False
             if (a_unit.hasplural()) :
@@ -457,13 +459,13 @@ class PODiff(object) :
                         merge_unit.merge(a_unit, overwrite, comments)
                     else :
                         self.set_plural(merge_unit, a_unit, plural)
-                    self.show_side(Side.A, row, a_unit, None, False, state, plural)
+                    self.show_side(Side.A, row, unit_count, a_unit, None, False, state, plural)
                     resolved_from_a += 1
                     new_in_a += 1
                     if (b_unit is not None) :
-                        self.show_side(Side.B, row, b_unit, None, False, state, plural)
+                        self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
                         new_in_b += 1
-                    self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                    self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                     row+=1
                 else :
                     # new entry is also in b
@@ -472,9 +474,9 @@ class PODiff(object) :
                     new_in_b += 1
                     self.unresolved.append(row)
                     # don't know what to merge yet
-                    self.show_side(Side.A, row, a_unit, [b_unit], False, state, plural)
-                    self.show_side(Side.B, row, b_unit, [a_unit], False, state, plural)
-                    self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                    self.show_side(Side.A, row, unit_count, a_unit, [b_unit], False, state, plural)
+                    self.show_side(Side.B, row, unit_count, b_unit, [a_unit], False, state, plural)
+                    self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                     row+=1
             if (b_unit is not None) :
                 for plural in range(len(a_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
@@ -484,8 +486,8 @@ class PODiff(object) :
                     resolved_from_b += 1
                     new_in_b += 1
                     self.set_plural(merge_unit, b_unit, plural)
-                    self.show_side(Side.B, row, b_unit, None, False, state)
-                    self.show_side(Side.MERGE, row, merge_unit, None, False, state)
+                    self.show_side(Side.B, row, unit_count, b_unit, None, False, state)
+                    self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state)
                     row+=1
         # find new entries only in b
         for b_unit in self.stores[Side.B].unit_iter():
@@ -494,6 +496,7 @@ class PODiff(object) :
             a_unit = self.find_unit(Side.A, b_unit)
             if (a_unit is None):
                 # use b
+                unit_count += 1
                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                 resolved_from_b += 1
                 new_in_b += 1
@@ -512,8 +515,8 @@ class PODiff(object) :
                             break
                 for plural in range(len(b_unit.gettarget().strings)) :
                     if (plural > 0) : self.set_plural(merge_unit, b_unit, plural)
-                    self.show_side(Side.B, row, b_unit, None, False, state, plural)
-                    self.show_side(Side.MERGE, row, merge_unit, None, False, state, plural)
+                    self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
+                    self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                     row+=1
         self.dirty[Side.MERGE] = True
         self.on_dirty()
