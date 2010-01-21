@@ -23,6 +23,7 @@ import pango
 import sys
 import os.path
 import gettext
+import ConfigParser
 from translate.misc.multistring import multistring
 import translate.storage.factory
 
@@ -297,6 +298,8 @@ class PoDiffGtk (podiff.PODiff):
     version = "0.0.1"
     title_ids = ["baseTitle","diffTitleA", "diffTitleB", "mergeTitle"]
     UNITS_PER_PAGE = 4
+    CONFIG_DIR = "~/.config/podiff"
+    CONFIG_FILENAME= "podiff.conf"
     def __init__(self):
         podiff.PODiff.__init__(self)
         self.builder = gtk.Builder()
@@ -314,6 +317,22 @@ class PoDiffGtk (podiff.PODiff):
         self.clear()
         self.scrolling = False
         self.search_iter = None
+        self.config = ConfigParser.ConfigParser()
+        try :
+            config_filename = os.path.expanduser(os.path.join(PoDiffGtk.CONFIG_DIR, PoDiffGtk.CONFIG_FILENAME))
+            self.config.read([config_filename])
+            if self.config.has_option("gui", "units_per_page") :
+                 PoDiffGtk.UNITS_PER_PAGE = self.config.getint("gui", "units_per_page")
+            else :
+                if not self.config.has_section("gui") :
+                    self.config.add_section("gui")
+                self.config.set("gui", "units_per_page", PoDiffGtk.UNITS_PER_PAGE)
+                if not os.path.isdir(os.path.expanduser(PoDiffGtk.CONFIG_DIR)) :
+                    os.makedirs(os.path.expanduser(PoDiffGtk.CONFIG_DIR))
+                with open(os.path.expanduser(config_filename), 'ab') as configfile:
+                    self.config.write(configfile)
+        except Exception as e:
+            print "Error reading config file: " + str(e)
 
     def main(self):
         gtk.main()
