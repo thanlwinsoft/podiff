@@ -304,7 +304,7 @@ class PoDiffGtk (podiff.PODiff):
         podiff.PODiff.__init__(self)
         self.builder = gtk.Builder()
         self.builder.set_translation_domain(GETTEXT_DOMAIN)
-        self.builder.add_from_file(os.path.dirname(__file__) + "/podiff.glade")
+        self.builder.add_from_file(os.path.join(os.path.dirname(__file__), "podiff.glade"))
         self.builder.connect_signals(self)
         self.diff_table = self.builder.get_object("diffTable")
         self.unit_dict = {}
