@@ -845,20 +845,4 @@ http://www.gnu.org/licenses/"""))
     def menuitemFilterResolved_toggled_cb(self, menu, data=None) :
         self.builder.get_object("toolbuttonFilterResolved").set_active(menu.get_active())
 
-# main method
-if __name__ == "__main__":
-    base = PoDiffGtk()
-    if (len(sys.argv) == 3) :
-        base.diff(sys.argv[1], sys.argv[2])
-    else :
-        if  len(sys.argv) == 5 :
-            base.merge(sys.argv[1], sys.argv[2],sys.argv[3], sys.argv[4])
-        else :
-            if (len(sys.argv) != 1):
-                print _("Usage: {0} fileA fileB").format(sys.argv[0])
-                print _("or     {0} base fileA fileB merge-output").format(sys.argv[0])
-                print _("or     {0}").format(sys.argv[0])
-                sys.exit(1)
-    base.main()
-
 

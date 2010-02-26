@@ -22,7 +22,7 @@ import gettext
 import codecs
 import io
 import translate.storage.factory
-import translate.storage.po
+
 GETTEXT_DOMAIN='podiff'
 translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
 
@@ -185,12 +185,6 @@ class PODiff(object) :
                 to_unit = self.find_unit(to_side, from_unit)
         if (to_unit is None) :
             to_unit = type(from_unit)(from_unit.source)
-#           if (isinstance(from_unit, translate.storage.pypo.pounit)):
-#                to_unit = translate.storage.pypo.pounit(from_unit.source)
-#            else :
-#                if (isinstance (from_unit, translate.storage.pypo.xliffunit)) :
-#                    to_unit = translate.storage.pypo.xliffunit(from_unit.source)
-#                else : raise Exception(_("Unsupported unit type:") + to_unit.__class__)
             self.stores[to_side].addunit(to_unit)
 
         # this might need to be customized for each supported type
