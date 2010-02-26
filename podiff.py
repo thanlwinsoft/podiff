@@ -19,8 +19,10 @@
 import sys
 import types
 import gettext
+import codecs
+import io
 import translate.storage.factory
-import translate.storage.pypo
+import translate.storage.po
 GETTEXT_DOMAIN='podiff'
 translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
 
@@ -46,13 +48,14 @@ class PODiff(object) :
         self.dirty = [False, False]
 
     def find_unit(self, side, unit) :
+        return self.stores[side].findid(unit.getid());
         # units = self.stores[side].findunits(unit.source)
-        if unit.source not in self.source_dict :
-            return None
-        context_dict = self.source_dict[unit.getsource()]
-        ctxt = unit.getcontext()
-        if ctxt not in context_dict : return None
-        return context_dict[ctxt][side]
+#        if unit.source not in self.source_dict :
+#            return None
+#        context_dict = self.source_dict[unit.getsource()]
+#        ctxt = unit.getcontext()
+#        if ctxt not in context_dict : return None
+#        return context_dict[ctxt][side]
 
     def index_storage(self) :
         """Index the source strings for all of the input files for faster lookup."""
@@ -75,14 +78,28 @@ class PODiff(object) :
     def open_storage(self, filename) :
         """Opens translation storage from file. First of all it tries to find a storage by the file extension, 
         if that fails, it defaults to trying to parse it as a po file."""
+        storage = None
         try :
-            return translate.storage.factory.getobject(filename)
+            storage = translate.storage.factory.getobject(filename)
+            if storage is None or storage.isempty():
+                self.show_warning(_("Failed to find any entries in file {0}.").format(filename))
         except ValueError :
+            # this occurs when the file has the wrong extension
+            # e.g. using a temp file when called directly by a VCS
             try :
-                return translate.storage.pypo.pofile.parsefile(filename)
-            except :
-                self.show_warning(_("Failed to parse file {0}.").format(filename))
-        return None
+                sys.stderr.write(_("Failed to identify type of {0} from extension.\n").format(filename))
+                filestream = codecs.open(filename, 'r', 'UTF-8')
+                # provide it with a dummy name, because the real name doesn't
+                # have the correct extension
+                filestream.name = translate.storage.factory._getdummyname(filestream)
+                storage_class = translate.storage.factory.getclass(filestream)
+                sys.stderr.write(_("Using parser {0}.\n").format(str(storage_class)))
+                storage = storage_class.parsefile(filename)
+                if storage is None or storage.isempty():
+                    self.show_warning(_("Failed to find any entries in file {0}.").format(filename))
+            except ValueError as e:
+                self.show_warning(_("Failed to parse file {0}. ({1})").format(filename, str(e)))
+        return storage
 
     def diff(self, a, b) :
         """Compare translation units in the files a and b."""
@@ -107,10 +124,16 @@ class PODiff(object) :
             if (unit_count % 100 == 0) :
                 sys.stderr.write('.')
             if (bUnit is not None) :
-                for plural in range(max(len(i.gettarget().strings), len(bUnit.gettarget().strings))):
-                    if plural < len(i.gettarget().strings) :
-                        if plural < len(bUnit.gettarget().strings) :
-                            if (i.gettarget().strings[plural] != bUnit.gettarget().strings[plural]): # a and b different
+                aPlurals = [ i.gettarget() ]
+                bPlurals = [bUnit.gettarget() ]
+                if i.hasplural() :
+                    aPlurals = i.gettarget().strings;
+                if bUnit.hasplural() :
+                    bPlurals = bUnit.gettarget().strings;
+                for plural in range(max(len(aPlurals), len(bPlurals))):
+                    if plural < len(aPlurals) :
+                        if plural < len(bPlurals) :
+                            if (aPlurals[plural] != bPlurals[plural]): # a and b different
                                 self.show_left(row, unit_count, i, [bUnit], False, state, plural)
                                 self.show_right(row, unit_count, bUnit, [i], False, state, plural)
                                 row+=1
@@ -125,7 +148,10 @@ class PODiff(object) :
                             bOnly+=1
                         
             else : # a only
-                for plural in range(len(i.gettarget().strings)) :
+                aPlurals = [ i.gettarget() ]
+                if i.hasplural() :
+                    aPlurals = i.gettarget().strings;
+                for plural in range(len(aPlurals)) :
                     self.show_left(row, unit_count, i, None, False, state, plural)
                     row+=1
                     aOnly+=1
@@ -135,7 +161,10 @@ class PODiff(object) :
             a = self.find_unit(Side.A, i)
             if a is None : # b only
                 unit_count += 1
-                for plural in range(len(i.gettarget().strings)) :
+                bPlurals = [i.gettarget()]
+                if i.hasplural() :
+                    bPlurals = i.gettarget().strings
+                for plural in range(len(bPlurals)) :
                     self.show_right(row, unit_count, i, None, False, state, plural)
                     row+=1
                     bOnly+=1
@@ -155,18 +184,19 @@ class PODiff(object) :
                 else : to_side = Side.RIGHT
                 to_unit = self.find_unit(to_side, from_unit)
         if (to_unit is None) :
-            if (isinstance(from_unit, translate.storage.pypo.pounit)):
-                to_unit = translate.storage.pypo.pounit(from_unit.source)
-            else :
-                if (isinstance (from_unit, translate.storage.pypo.xliffunit)) :
-                    to_unit = translate.storage.pypo.xliffunit(from_unit.source)
-                else : raise Exception(_("Unsupported unit type:") + to_unit.__class__)
+            to_unit = type(from_unit)(from_unit.source)
+#           if (isinstance(from_unit, translate.storage.pypo.pounit)):
+#                to_unit = translate.storage.pypo.pounit(from_unit.source)
+#            else :
+#                if (isinstance (from_unit, translate.storage.pypo.xliffunit)) :
+#                    to_unit = translate.storage.pypo.xliffunit(from_unit.source)
+#                else : raise Exception(_("Unsupported unit type:") + to_unit.__class__)
             self.stores[to_side].addunit(to_unit)
 
         # this might need to be customized for each supported type
         if (self.copy_notes) :
             # to_unit.removenotes()
-            for origin in ("translator", 'developer', 'programmer', 'source code') :
+            for origin in ("translator", 'developer') : # developer, programmer, and source code are synonymns
                 new_notes = []
                 old_notes = to_unit.getnotes(origin).split('\n')
                 notes = from_unit.getnotes(origin).split('\n')
@@ -181,9 +211,10 @@ class PODiff(object) :
             to_unit.settarget(from_unit.gettarget())
         else :
             new_target = to_unit.gettarget()
-            while (len(new_target.strings) < plural + 1) :
-                new_target.strings.append(u"")
-            new_target.strings[plural] = from_unit.gettarget().strings[plural]
+            if unit.hasplural():
+                while (len(new_target.strings) < plural + 1) :
+                    new_target.strings.append(u"")
+                new_target.strings[plural] = from_unit.gettarget().strings[plural]
             to_unit.settarget(new_target)
         if (callable(to_unit.markfuzzy)) :
             to_unit.markfuzzy(False)

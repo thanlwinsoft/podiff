@@ -172,10 +172,16 @@ class PoUnitGtk(object) :
             self.source_buffer.set_text(unit.source)
         else :
             self.source_buffer.set_text(unit.source.strings[1])
-        if (len(unit.gettarget().strings) > self.plural) :
-            self.target_buffer.set_text(unit.gettarget().strings[self.plural])
+        if unit.hasplural() :
+            if (len(unit.gettarget().strings) > self.plural) :
+                self.target_buffer.set_text(unit.gettarget().strings[self.plural])
+            else :
+                self.target_buffer.set_text(u"")
         else :
-            self.target_buffer.set_text(u"")
+            if (self.plural == 0) :
+                self.target_buffer.set_text(unit.gettarget());
+            else :
+                self.target_buffer.set_text(u"")
         self.context_buffer.set_text(unit.getcontext())
         self.target_buffer.connect("insert-text", self.insert_text_event_cb, self.target)
         self.target_buffer.connect("delete-range", self.delete_range_event_cb, self.target)
@@ -188,11 +194,17 @@ class PoUnitGtk(object) :
         if (cf_units is not None) :
             # print unit.gettarget()
             # print cf_unit.gettarget()
+            plurals = [ unit.gettarget() ]
+            if unit.hasplural():
+                plurals = unit.gettarget().strings
             for j in range(len(cf_units)) :
                 cf_unit = cf_units[j]
-                if (len(unit.gettarget().strings) <= self.plural or len(cf_unit.gettarget().strings) <= self.plural) :
+                cf_plurals = [ cf_unit.gettarget() ]
+                if cf_unit.hasplural() :
+                    cf_plurals = cf_unit.gettarget().strings
+                if (len(plurals) <= self.plural or len(cf_plurals) <= self.plural) :
                     continue
-                common = find_matches(unit.gettarget().strings[self.plural], cf_unit.gettarget().strings[self.plural])
+                common = find_matches(plurals[self.plural], cf_plurals[self.plural])
                 pos = 0
                 for i in range(len(common)) :
                     if (pos < common[i][0]) : 
@@ -200,9 +212,9 @@ class PoUnitGtk(object) :
                         e_iter = self.target_buffer.get_iter_at_offset(common[i][0])
                         self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
                     pos = common[i][0] + common[i][2]
-                if pos < len(unit.gettarget().strings[self.plural]) :
+                if pos < len(plurals[self.plural]) :
                     s_iter = self.target_buffer.get_iter_at_offset(pos)
-                    e_iter = self.target_buffer.get_iter_at_offset(len(unit.gettarget().strings[self.plural]))
+                    e_iter = self.target_buffer.get_iter_at_offset(len(plurals[self.plural]))
                     self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
         if (modified) :
             self.target_buffer.remove_all_tags(self.target_buffer.get_start_iter(), self.target_buffer.get_end_iter())
@@ -360,8 +372,11 @@ class PoDiffGtk (podiff.PODiff):
         if value is None : value = int(sb.get_value())
         min_visible_row = value
         max_visible_row = value + PoDiffGtk.UNITS_PER_PAGE
-        if (max_visible_row > sb.get_adjustment().get_upper()):
-            max_visible_row = int(sb.get_adjustment().get_upper())
+        # The get method is only available in PyGTK >= 2.14
+#        if (max_visible_row > sb.get_adjustment().get_upper()):
+#            max_visible_row = int(sb.get_adjustment().get_upper())
+        if (max_visible_row > sb.get_adjustment().upper):
+            max_visible_row = int(sb.get_adjustment().upper)
             min_visible_row = max(0, max_visible_row - PoDiffGtk.UNITS_PER_PAGE)
         return (min_visible_row, max_visible_row)
     
@@ -650,10 +665,12 @@ http://www.gnu.org/licenses/"""))
         sb = self.builder.get_object("unitVscrollbar")
         # print str(event)
         if (event.direction == gtk.gdk.SCROLL_UP) : 
-            sb.set_value(sb.get_value() - sb.get_adjustment().get_step_increment())
+            sb.set_value(sb.get_value() - sb.get_adjustment().step_increment)        
+#            sb.set_value(sb.get_value() - sb.get_adjustment().get_step_increment())
             return True
-        if (event.direction & gtk.gdk.SCROLL_DOWN) : 
-            sb.set_value(sb.get_value() + sb.get_adjustment().get_step_increment())
+        if (event.direction & gtk.gdk.SCROLL_DOWN) :
+            sb.set_value(sb.get_value() + sb.get_adjustment().step_increment)
+#            sb.set_value(sb.get_value() + sb.get_adjustment().get_step_increment())
             return True
 
     def menuitemSearch_button_release_event_cb(self, button, data=None) :

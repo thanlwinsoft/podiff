@@ -3,4 +3,5 @@ syntax:glob
 *.pyc
 *.po
 Longest_common_subsequence_problem_files*
+tmp
 
