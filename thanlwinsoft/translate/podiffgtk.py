@@ -464,12 +464,6 @@ class PoDiffGtk (podiff.PODiff):
             self.scrolling = False
         return True # prevent propagation
 
-    def show_left(self, row, index, unit, cf_unit, modified, state, plural) :
-        self.show_side(podiff.Side.LEFT, row, index, unit, cf_unit, modified, state, plural)
-
-    def show_right(self, row, index, unit, cf_unit, modified, state, plural) :
-        self.show_side(podiff.Side.RIGHT, row, index, unit, cf_unit, modified, state, plural)
-
     def show_status(self, msg) :
         statusbar = self.builder.get_object("statusbar")
         statusbar.pop(1)
@@ -617,13 +611,10 @@ http://www.gnu.org/licenses/"""))
                 win.set_title(old_title[1:])
                 
     def clear(self) :
-        self.unit_count = 0
-        self.unresolved = []
+        super(PODiffGtk, self).clear()
         for child in self.diff_table.get_children() :
             if (isinstance(child, PoUnitGtk)) :
                 self.diff_table.remove(child)
-        for i in range(len(self.dirty)) :
-            self.dirty[i] = False
         self.unit_dict = {}
         self.search_iter = None
         self.builder.get_object("toolbuttonFilterResolved").set_active(False)
@@ -844,5 +835,21 @@ http://www.gnu.org/licenses/"""))
 
     def menuitemFilterResolved_toggled_cb(self, menu, data=None) :
         self.builder.get_object("toolbuttonFilterResolved").set_active(menu.get_active())
+
+# main method
+if __name__ == "__main__":
+    base = PoDiffGtk()
+    if (len(sys.argv) == 3) :
+        base.diff(sys.argv[1], sys.argv[2])
+    else :
+        if  len(sys.argv) == 5 :
+            base.merge(sys.argv[1], sys.argv[2],sys.argv[3], sys.argv[4])
+        else :
+            if (len(sys.argv) != 1):
+                print _("Usage: {0} fileA fileB").format(sys.argv[0])
+                print _("or     {0} base fileA fileB merge-output").format(sys.argv[0])
+                print _("or     {0}").format(sys.argv[0])
+                sys.exit(1)
+    base.main()
 
 

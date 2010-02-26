@@ -21,53 +21,60 @@
 
 import sys
 import math
+import collections
 import unicodedata
 import random
 import time
+
+Match  = collections.namedtuple("Match", "a b size")
 
 def is_mark(c) :
     cat = unicodedata.category(c)
     return cat[0] == 'M'
 
 def next_cluster(text, offset) :
-    i = offset + 1
     text_len = len(text)
+    start = offset
+    i = start + 1
     while (i < text_len and is_mark(text[i])) :
         i += 1
-    return text[offset:i]
+    return [text[start:i], i - offset]
 
 def prev_cluster(text, offset) :
-    i = offset - 1
+    last = offset
+    i = last - 1
     while (i >= 0 and is_mark(text[i])) :
         i -= 1
-    return text[i:offset]
+    return [text[i:last], offset - i]
 
 def find_matches(a, b) :
-    start = 0
-    ca = next_cluster(a, start)
-    cb = next_cluster(b,start)
-    while (start < len(a) and start < len(b) and ca == cb):
-        start += len(ca)
-        ca = next_cluster(a, start)
-        cb = next_cluster(b, start)
+    start_a = 0
+    start_b = 0
+    ca, ca_len = next_cluster(a, start_a)
+    cb, cb_len = next_cluster(b,start_b)
+    while (start_a < len(a) and start_b < len(b) and ca == cb):
+        start_a += ca_len
+        start_b += cb_len
+        ca, ca_len = next_cluster(a, start_a)
+        cb, cb_len = next_cluster(b, start_b)
     a_end = len(a)
     b_end = len(b)
-    ca = prev_cluster(a, a_end)
-    cb = prev_cluster(b, b_end)
-    while (a_end > start and b_end > start and ca == cb):
-        a_end -= len(ca)
-        b_end -= len(cb)
-        ca = prev_cluster(a, a_end)
-        cb = prev_cluster(b, b_end)
-    if (a_end < start) : a_end = a_start
-    if (b_end < start) : b_end = b_start
-    lcs_data = longest_common_subsequence(a, b, start, start, a_end, b_end)
+    ca, ca_len = prev_cluster(a, a_end)
+    cb, cb_len = prev_cluster(b, b_end)
+    while (a_end > start_a and b_end > start_b and ca == cb):
+        a_end -= ca_len
+        b_end -= cb_len
+        ca, ca_len = prev_cluster(a, a_end)
+        cb, cb_len = prev_cluster(b, b_end)
+    if (a_end < start_a) : a_end = start_a
+    if (b_end < start_b) : b_end = start_b
+    lcs_data = longest_common_subsequence(a, b, start_a, start_b, a_end, b_end)
 #    print lcs_data.lcs
     common = []
-    if (start > 0) : common.append((0, 0, start))
+    if (start_a > 0 and start_b > 0) : common.append(Match(0, 0, min(start_a, start_b) ))
     if (lcs_data.lcs[-1][-1] > 0) :
         common.extend(get_a_longest_subsequence(a, b, lcs_data))
-    if (a_end < len(a)) : common.append((a_end, b_end, len(a) - a_end))
+    if (a_end < len(a)) : common.append(Match(a_end, b_end, len(a) - a_end))
     return common
 
 def get_a_longest_subsequence(a, b, lcs_data) :
@@ -84,7 +91,15 @@ def get_a_longest_subsequence(a, b, lcs_data) :
                 row -= 1
             else :
                 if (lcs_data.lcs[row-1][col-1] < lcs_data.lcs[row][col]) :
-                    common.insert(0, (lcs_data.a_clusters[row-1], lcs_data.b_clusters[col-1], lcs_data.a_clusters[row] - lcs_data.a_clusters[row-1]))
+                    a_start = lcs_data.a_clusters[row-1]
+                    b_start = lcs_data.b_clusters[col-1]
+                    length = lcs_data.a_clusters[row] - lcs_data.a_clusters[row-1]
+                    # merge ajacent runs
+                    if (len(common) > 0) and (common[0][0] == a_start + length) and (common[0][1] == b_start + length) :
+                        length += common[0][2]
+                        common[0] = Match(a_start, b_start, length)
+                    else :
+                        common.insert(0, Match(a_start, b_start, length))
                     row -= 1
                     col -= 1
 
@@ -107,16 +122,16 @@ def longest_common_subsequence(a, b, a_offset, b_offset, a_end, b_end) :
     i = 1
     while a_pos < a_end :
         data.a_clusters.append(a_pos)
-        a_cluster = next_cluster(a, a_pos)
-        a_pos += len(a_cluster)
+        a_cluster, a_len = next_cluster(a, a_pos)
+        a_pos += a_len
         lcs.append([0])
         i+= 1
     data.a_clusters.append(a_pos)
     i = 1
     while b_pos < b_end :
         data.b_clusters.append(b_pos)
-        b_cluster = next_cluster(b, b_pos)
-        b_pos += len(b_cluster)
+        b_cluster, b_len = next_cluster(b, b_pos)
+        b_pos += b_len
         lcs[0].append(0)
         i+= 1
     data.b_clusters.append(b_pos)
@@ -125,9 +140,9 @@ def longest_common_subsequence(a, b, a_offset, b_offset, a_end, b_end) :
     a_pos = a_offset
     for r in range(1, len(data.a_clusters)) :
         b_pos = b_offset
-        a_cluster = next_cluster(a, a_pos)
+        a_cluster, a_len = next_cluster(a, a_pos)
         for c in range(1, len(data.b_clusters)) :
-            b_cluster = next_cluster(b, b_pos)
+            b_cluster, b_len = next_cluster(b, b_pos)
             # print c, len(lcs[r-1])
             assert(c < len(lcs[r-1]))
             assert(r < len(lcs))
@@ -135,9 +150,9 @@ def longest_common_subsequence(a, b, a_offset, b_offset, a_end, b_end) :
                 lcs[r].append(lcs[r-1][c-1] + 1)
             else :
                 lcs[r].append(max(lcs[r-1][c], lcs[r][c-1]))
-            b_pos += len(b_cluster)
+            b_pos += b_len
             if b_pos == len(b): break;
-        a_pos += len(a_cluster)
+        a_pos += a_len
         if a_pos == len(a): break;
     data.lcs = lcs
     return data
@@ -181,12 +196,38 @@ def markup_deltas(a, b, common, delta_prefix='[', delta_suffix=']') :
         marked_b += delta_prefix + b[bPos:len(b)] + delta_suffix
     return (marked_a, marked_b)
 
+class SequenceMatcher :
+    """SequenceMatcher interface to textdiff. Only a subset of the difflib methods are supported. """
+    def __init__(self, junk=None, a=None, b=None) :
+        self.junk = junk
+        self.a = a
+        self.b = b
+        self.matches = None
+    def set_seqs(self, a,b) :
+        self.a = a
+        self.b = b
+        self.matches = None
+    def set_seq1(self, a) :
+        self.a = a
+        self.matches = None
+    def set_seq2(self, b) :
+        self.b = b
+        self.matches = None
+    def get_matching_blocks(self) :
+        if self.matches is None:
+            self.matches = find_matches(self.a, self.b)
+            if len(self.matches) == 0 or self.matches[len(self.matches)-1][0] < len(self.a) or self.matches[len(self.matches)-1][1] < len(self.b) :
+                self.matches.append( Match(len(self.a), len(self.b), 0) )
+        return self.matches
+
 
 if __name__ == "__main__":
     if (len(sys.argv) >= 3) :
         a = unicode(sys.argv[1], 'utf-8')
         b = unicode(sys.argv[2], 'utf-8')
-        matches = find_matches(a, b)
+#        matches = find_matches(a, b)
+        matcher = SequenceMatcher(None, a, b)
+        matches = matcher.get_matching_blocks()
         print matches
         print markup_deltas(a, b, matches)
     else :

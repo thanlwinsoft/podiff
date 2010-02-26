@@ -45,7 +45,13 @@ class PODiff(object) :
     copy_notes = True
     show_resolved_merges = True
     def __init__(self) :
-        self.dirty = [False, False]
+        self.dirty = [False, False, False, False]
+
+    def clear(self) :
+        for i in range(len(self.dirty)) :
+            self.dirty[i] = False
+        self.unit_count = 0
+        self.unresolved = []
 
     def find_unit(self, side, unit) :
         return self.stores[side].findid(unit.getid());
@@ -100,6 +106,20 @@ class PODiff(object) :
             except ValueError as e:
                 self.show_warning(_("Failed to parse file {0}. ({1})").format(filename, str(e)))
         return storage
+
+    def show_status(self, msg) :
+        print >> sys.stderr, "Status: " + msg
+    def show_warning(self, msg) :
+        print >> sys.stderr, "Warning: " + msg
+
+    def show_left(self, row, index, unit, cf_unit, modified, state, plural) :
+        self.show_side(Side.LEFT, row, index, unit, cf_unit, modified, state, plural)
+
+    def show_right(self, row, index, unit, cf_unit, modified, state, plural) :
+        self.show_side(Side.RIGHT, row, index, unit, cf_unit, modified, state, plural)
+
+    def set_total_units(self, row_count) :
+        self.unit_count = row_count
 
     def diff(self, a, b) :
         """Compare translation units in the files a and b."""
