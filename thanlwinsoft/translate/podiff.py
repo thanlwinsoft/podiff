@@ -277,21 +277,25 @@ class PoDiff(object) :
                 new_target = multistring(new_target)
             while (len(new_target.strings) <= plural) :
                 new_target.strings.append(u"")
+            assert(plural < len(source_unit.gettarget().strings))
             new_target.strings[plural] = source_unit.gettarget().strings[plural]
         target_unit.settarget(new_target)
-        # sys.stderr.write(unicode(type(source_unit.getsource())) + " " + unicode(type(target_unit.getsource())) + "\n")
-        # sys.stderr.write(unicode(type(new_target)) + "\n")
+        sys.stderr.write(unicode(type(source_unit.getsource())) + " " + unicode(type(target_unit.getsource())) + "\n")
+        sys.stderr.write(unicode(type(source_unit.gettarget())) + " " + unicode(type(new_target)) + "\n")
 
     def init_unit(self, store, base_unit) :
-        merge_unit = store.addsourceunit(base_unit.source)
+        assert(base_unit is not None)
+        merge_unit = store.UnitClass.buildfromunit(base_unit)
+        store.addunit(merge_unit)
         if (base_unit.getcontext() is not None and len(base_unit.getcontext()) > 0) :
             if hasattr(merge_unit, "msgctxt"):
                 merge_unit.msgctxt = base_unit.msgctxt
             else :
                 sys.stderr.write("Warning: context ignored for this file format\n")
         # id isn't transferred automatically in xliff
-        if (merge_unit.getid() != base_unit.getid()) :
+        if (merge_unit.getid() != base_unit.getid() and hasattr(merge_unit, "setid")) :
             merge_unit.setid(base_unit.getid())
+        assert(merge_unit.getid() == base_unit.getid())
         return merge_unit
 
     def merge(self, base, a, b, merge) :
