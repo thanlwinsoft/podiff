@@ -271,17 +271,16 @@ class PoDiff(object) :
             target_unit.setsource(source_unit.getsource())
             new_target = source_unit.gettarget()
         else :
-            #if not target_unit.hasplural() or not isinstance(target_unit.getsource(), multistring):
-            target_unit.setsource(source_unit.getsource())
+            if not target_unit.hasplural() or not isinstance(target_unit.getsource(), multistring):
+                target_unit.setsource(source_unit.getsource())
             if not hasattr(new_target, "strings") :
                 new_target = multistring(new_target)
             while (len(new_target.strings) <= plural) :
                 new_target.strings.append(u"")
             new_target.strings[plural] = source_unit.gettarget().strings[plural]
         target_unit.settarget(new_target)
-        sys.stderr.write(unicode(type(source_unit)) + " " + unicode(type(target_unit)))
-        sys.stderr.write(unicode(type(source_unit.getsource())) + " " + unicode(type(target_unit.getsource())) + "\n")
-        sys.stderr.write(unicode(type(new_target)) + "\n")
+        # sys.stderr.write(unicode(type(source_unit.getsource())) + " " + unicode(type(target_unit.getsource())) + "\n")
+        # sys.stderr.write(unicode(type(new_target)) + "\n")
 
     def init_unit(self, store, base_unit) :
         merge_unit = store.addsourceunit(base_unit.source)
