@@ -6,7 +6,7 @@ import os
 import distutils.core
 import distutils.sysconfig
 
-package="thanlwinsoft.translate"
+packages=["thanlwinsoft", "thanlwinsoft.translate"]
 pkg_dir = "thanlwinsoft" + os.sep + "translate"
 
 if (sys.platform.find("linux") > -1):
@@ -28,7 +28,7 @@ distutils.core.setup(
     author="Keith Stribley",
     author_email="devel@thanlwinsoft.org",
     url="http://www.thanlwinsoft.org/",
-    packages = [package],
+    packages = packages,
     platforms=["any"],
     license="GNU General Public License (GPL)",
     scripts = [pkg_dir + os.sep + "podiffgtk"],

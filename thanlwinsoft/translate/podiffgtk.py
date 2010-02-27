@@ -27,7 +27,7 @@ import ConfigParser
 from translate.misc.multistring import multistring
 import translate.storage.factory
 
-import podiff
+from thanlwinsoft.translate.podiff import PoDiff, Side, UnitState
 from textdiff import find_matches
 
 GETTEXT_DOMAIN='podiff'
@@ -66,9 +66,9 @@ class PoUnitGtk(object) :
         self.source_buffer = gtk.TextBuffer()
         self.source_buffer.set_text(_("Source"))
         if (self.plural > 0) :
-            self.source.set_tooltip_text(_("Source [msgid_plural]"))
+            self.source.set_tooltip_text(_("Source (plural)"))
         else :
-            self.source.set_tooltip_text(_("Source [msgid]"))
+            self.source.set_tooltip_text(_("Source"))
         self.source.set_buffer(self.source_buffer)
         self.source.set_editable(False)
         self.source.show()
@@ -87,9 +87,9 @@ class PoUnitGtk(object) :
         self.target_buffer.get_tag_table().add(self.edit_tag)
         self.target_buffer.set_text("Target")
         if (self.plural > 0) :
-            self.target.set_tooltip_text(_("Target [msgstr {0:d}]").format(self.plural))
+            self.target.set_tooltip_text(_("Target [{0:d}]").format(self.plural))
         else :
-            self.target.set_tooltip_text(_("Target [msgstr]"))
+            self.target.set_tooltip_text(_("Target"))
         self.target.set_buffer(self.target_buffer)
         self.target.set_editable(True)
         self.target.show()
@@ -103,9 +103,9 @@ class PoUnitGtk(object) :
         self.copy_button.show()
         self.id_label = gtk.Label()
         self.id_label.show()
-        if (state & podiff.UnitState.MODE_MERGE) :
+        if (state & UnitState.MODE_MERGE) :
             self.frame.set_size_request(125, -1)
-            if (self.side == podiff.Side.BASE or self.side == podiff.Side.A or self.side == podiff.Side.B) :
+            if (self.side == Side.BASE or self.side == Side.A or self.side == Side.B) :
                 self.copy_button.set_label(">>")
                 arrow = gtk.Arrow(gtk.ARROW_RIGHT, gtk.SHADOW_IN)
                 arrow.show()
@@ -115,7 +115,7 @@ class PoUnitGtk(object) :
                 self.title_box.add(self.copy_button)
             else :
                 img = gtk.Image()
-                if (state & podiff.UnitState.RESOLVED) :
+                if (state & UnitState.RESOLVED) :
                     img.set_from_file(os.path.dirname(__file__) + "/merged.png")
                 else :           
                     img.set_from_file(os.path.dirname(__file__) + "/unmerged.png")
@@ -126,7 +126,7 @@ class PoUnitGtk(object) :
                 pass            
         else :
             self.frame.set_size_request(250, -1)
-            if (self.side == podiff.Side.LEFT): 
+            if (self.side == Side.LEFT): 
                 self.copy_button.set_label(">>")
                 arrow = gtk.Arrow(gtk.ARROW_RIGHT, gtk.SHADOW_IN)
                 arrow.show()
@@ -218,7 +218,7 @@ class PoUnitGtk(object) :
                     self.target_buffer.apply_tag_by_name("diff" + str(j), s_iter, e_iter)
         if (modified) :
             self.target_buffer.remove_all_tags(self.target_buffer.get_start_iter(), self.target_buffer.get_end_iter())
-            if self.side == podiff.Side.LEFT :
+            if self.side == Side.LEFT :
                 self.target.modify_text(gtk.STATE_NORMAL, gtk.gdk.Color(0.0, 1.0, 0.0))
             else :
                 self.target.modify_text(gtk.STATE_NORMAL, gtk.gdk.Color(1.0, 0.0, 0.0))
@@ -306,14 +306,14 @@ class PoUnitGtk(object) :
             if self.find_in_buffer(view, text_buffer, text, case_sensitive, backwards, bounds) : return True
         return False
 
-class PoDiffGtk (podiff.PODiff):
+class PoDiffGtk (PoDiff):
     version = "0.0.1"
     title_ids = ["baseTitle","diffTitleA", "diffTitleB", "mergeTitle"]
     UNITS_PER_PAGE = 4
     CONFIG_DIR = "~/.config/podiff"
     CONFIG_FILENAME= "podiff.conf"
     def __init__(self):
-        podiff.PODiff.__init__(self)
+        PoDiff.__init__(self)
         self.builder = gtk.Builder()
         self.builder.set_translation_domain(GETTEXT_DOMAIN)
         self.builder.add_from_file(os.path.join(os.path.dirname(__file__), "podiff.glade"))
@@ -514,14 +514,14 @@ class PoDiffGtk (podiff.PODiff):
         dialog = self.builder.get_object("openDialog")
         if (len(self.stores) == 2) :
             self.builder.get_object("radiobuttonDiff").set_active(True)
-            self.builder.get_object("filechooserbuttonA").set_filename(self.stores[podiff.Side.LEFT].filename)
-            self.builder.get_object("filechooserbuttonB").set_filename(self.stores[podiff.Side.RIGHT].filename)
+            self.builder.get_object("filechooserbuttonA").set_filename(self.stores[Side.LEFT].filename)
+            self.builder.get_object("filechooserbuttonB").set_filename(self.stores[Side.RIGHT].filename)
         else :
             if (len(self.stores) == 4) :
                 self.builder.get_object("radiobuttonMerge").set_active(True)
-                self.builder.get_object("filechooserbuttonBase").set_filename(self.stores[podiff.Side.BASE].filename)
-                self.builder.get_object("filechooserbuttonA").set_filename(self.stores[podiff.Side.A].filename)
-                self.builder.get_object("filechooserbuttonB").set_filename(self.stores[podiff.Side.B].filename)
+                self.builder.get_object("filechooserbuttonBase").set_filename(self.stores[Side.BASE].filename)
+                self.builder.get_object("filechooserbuttonA").set_filename(self.stores[Side.A].filename)
+                self.builder.get_object("filechooserbuttonB").set_filename(self.stores[Side.B].filename)
                 self.builder.get_object("filechooserbuttonMerge").set_filename(self.stores[Side.MERGE].filename)
                 
         response = dialog.run()
@@ -611,7 +611,7 @@ http://www.gnu.org/licenses/"""))
                 win.set_title(old_title[1:])
                 
     def clear(self) :
-        super(PODiffGtk, self).clear()
+        super(PoDiffGtk, self).clear()
         for child in self.diff_table.get_children() :
             if (isinstance(child, PoUnitGtk)) :
                 self.diff_table.remove(child)
@@ -693,7 +693,7 @@ http://www.gnu.org/licenses/"""))
         from_unit = find_frame_pos(focus)
         if (from_unit is None) :
             from_unit = (0, 0)
-            side = podiff.Side.BASE
+            side = Side.BASE
             row = 0
         else :
             side, row = from_unit
@@ -709,11 +709,11 @@ http://www.gnu.org/licenses/"""))
                     return True
             side += step
             if (side < 0) :
-                side = podiff.Side.MERGE
+                side = Side.MERGE
                 row += step
             else :
-                if side > podiff.Side.MERGE :
-                    side = podiff.Side.BASE
+                if side > Side.MERGE :
+                    side = Side.BASE
                     row += step
             if (row < 0) : row = self.unit_count - 1
             if (row >= self.unit_count) : row = 0

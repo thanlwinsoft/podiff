@@ -22,14 +22,18 @@ import gettext
 import codecs
 import io
 import translate.storage.factory
+import translate.storage.pocommon
+import translate.storage.poxliff
+from translate.misc.multistring import multistring
 
 GETTEXT_DOMAIN='podiff'
 translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
 
 class Side :
+    """IDs for the different files in in the comparison"""
     LEFT, RIGHT = (1, 2)
     BASE, A, B, MERGE = (0, 1, 2, 3)
-    
+
 class UnitState :
     """Bits fields to handle state of a translation unit"""
     RESOLVED = 0x1
@@ -38,9 +42,8 @@ class UnitState :
     USED_B = 0x8
     MODE_DIFF = 0x100
     MODE_MERGE = 0x200
-    
 
-class PODiff(object) :
+class PoDiff(object) :
     """Class to compare two translation files or merge two branches"""
     copy_notes = True
     show_resolved_merges = True
@@ -54,14 +57,17 @@ class PODiff(object) :
         self.unresolved = []
 
     def find_unit(self, side, unit) :
-        return self.stores[side].findid(unit.getid());
-        # units = self.stores[side].findunits(unit.source)
-#        if unit.source not in self.source_dict :
-#            return None
-#        context_dict = self.source_dict[unit.getsource()]
-#        ctxt = unit.getcontext()
-#        if ctxt not in context_dict : return None
-#        return context_dict[ctxt][side]
+#       Using storage.findid treats an entry with the same source with and
+#       without plurals as different, the code below doesn't
+        if isinstance(unit, translate.storage.pocommon.pounit) and not isinstance(unit, translate.storage.poxliff.PoXliffFile):
+            if unit.source not in self.source_dict :
+                return None
+            context_dict = self.source_dict[unicode(unit.getsource())]
+            ctxt = unit.getcontext()
+            if ctxt not in context_dict : return None
+            return context_dict[ctxt][side]
+        else :
+            return self.stores[side].findid(unit.getid())
 
     def index_storage(self) :
         """Index the source strings for all of the input files for faster lookup."""
@@ -69,17 +75,17 @@ class PODiff(object) :
         for i in range(len(self.stores)) :
             if self.stores[i] is None : continue
             for unit in self.stores[i].unit_iter():
-                if unit.getsource() in self.source_dict :
-                    context = self.source_dict[unit.getsource()]
+                if unicode(unit.getsource()) in self.source_dict :
+                    context = self.source_dict[unicode(unit.getsource())]
                 else :
                     context = {}
-                if unit.getcontext() in context :
-                    units = context[unit.getcontext()]
+                if unicode(unit.getcontext()) in context :
+                    units = context[unicode(unit.getcontext())]
                 else :
                     units = [None, None, None, None]
                 units[i] = unit
-                context[unit.getcontext()] = units
-                self.source_dict[unit.getsource()] = context
+                context[unicode(unit.getcontext())] = units
+                self.source_dict[unicode(unit.getsource())] = context
         
     def open_storage(self, filename) :
         """Opens translation storage from file. First of all it tries to find a storage by the file extension, 
@@ -105,6 +111,7 @@ class PODiff(object) :
                     self.show_warning(_("Failed to find any entries in file {0}.").format(filename))
             except ValueError as e:
                 self.show_warning(_("Failed to parse file {0}. ({1})").format(filename, str(e)))
+        print "Openned {0} using {1}.".format(filename, type(storage))
         return storage
 
     def show_status(self, msg) :
@@ -138,6 +145,7 @@ class PODiff(object) :
         unit_count = 0
         # iterate over left hand side
         for i in self.stores[Side.A].unit_iter():
+            if i.isheader() : continue
             bUnit = self.find_unit(Side.B, i)
             state = UnitState.MODE_DIFF
             unit_count += 1
@@ -153,7 +161,7 @@ class PODiff(object) :
                 for plural in range(max(len(aPlurals), len(bPlurals))):
                     if plural < len(aPlurals) :
                         if plural < len(bPlurals) :
-                            if (aPlurals[plural] != bPlurals[plural]): # a and b different
+                            if (unicode(aPlurals[plural]) != unicode(bPlurals[plural])): # a and b different
                                 self.show_left(row, unit_count, i, [bUnit], False, state, plural)
                                 self.show_right(row, unit_count, bUnit, [i], False, state, plural)
                                 row+=1
@@ -178,6 +186,7 @@ class PODiff(object) :
             
 
         for i in self.stores[Side.B].unit_iter():
+            if i.isheader() : continue
             a = self.find_unit(Side.A, i)
             if a is None : # b only
                 unit_count += 1
@@ -257,12 +266,34 @@ class PODiff(object) :
             if len(new_target.strings) > plural :
                 new_target.strings[plural] = u""
             return
-        if not target_unit.hasplural() :
+        assert(plural == 0 or source_unit.hasplural())
+        if not source_unit.hasplural() and plural == 0:
             target_unit.setsource(source_unit.getsource())
-        while (len(new_target.strings) <= plural) :
-            new_target.strings.append(u"")
-        new_target.strings[plural] = source_unit.gettarget().strings[plural]
+            new_target = source_unit.gettarget()
+        else :
+            #if not target_unit.hasplural() or not isinstance(target_unit.getsource(), multistring):
+            target_unit.setsource(source_unit.getsource())
+            if not hasattr(new_target, "strings") :
+                new_target = multistring(new_target)
+            while (len(new_target.strings) <= plural) :
+                new_target.strings.append(u"")
+            new_target.strings[plural] = source_unit.gettarget().strings[plural]
         target_unit.settarget(new_target)
+        sys.stderr.write(unicode(type(source_unit)) + " " + unicode(type(target_unit)))
+        sys.stderr.write(unicode(type(source_unit.getsource())) + " " + unicode(type(target_unit.getsource())) + "\n")
+        sys.stderr.write(unicode(type(new_target)) + "\n")
+
+    def init_unit(self, store, base_unit) :
+        merge_unit = store.addsourceunit(base_unit.source)
+        if (base_unit.getcontext() is not None and len(base_unit.getcontext()) > 0) :
+            if hasattr(merge_unit, "msgctxt"):
+                merge_unit.msgctxt = base_unit.msgctxt
+            else :
+                sys.stderr.write("Warning: context ignored for this file format\n")
+        # id isn't transferred automatically in xliff
+        if (merge_unit.getid() != base_unit.getid()) :
+            merge_unit.setid(base_unit.getid())
+        return merge_unit
 
     def merge(self, base, a, b, merge) :
         self.clear()
@@ -275,12 +306,21 @@ class PODiff(object) :
         for s in self.stores :
             if (s is None) : return
         self.index_storage()
-        mergeStore = object.__new__(self.stores[0].__class__, merge, "UTF-8")
-        mergeStore.__init__(merge, "UTF-8")
+        merge_class = type(self.stores[0]) #.__class__
+        if (type(self.stores[0]) != type(self.stores[1]) or type(self.stores[0]) != type(self.stores[2])):
+            try :
+                merge_class = translate.storage.factory.getclass(merge)
+            except ValueError:
+                pass
+        # assume that the format specific argument defaults are OK
+        mergeStore = object.__new__(merge_class, merge)
+        mergeStore.__init__()
         mergeStore.filename = merge
+        print "Merge {0} using {1}.".format(merge, merge_class)
         new_headers = self.stores[Side.BASE].parseheader()
         new_headers['add'] = True
-        mergeStore.updateheader(**new_headers)
+        if hasattr(mergeStore, "updateheader") :
+            mergeStore.updateheader(**new_headers)
         self.stores.append(mergeStore)
         #print str(self.stores[Side.MERGE])
         self.set_merge_titles(base, a, b, merge)
@@ -294,24 +334,33 @@ class PODiff(object) :
         row = 0
         unit_count = 0
         for base_unit in self.stores[Side.BASE].unit_iter():
+            if base_unit.isheader() : continue
+            merge_unit = None
             a_unit = self.find_unit(Side.A, base_unit)
             b_unit = self.find_unit(Side.B, base_unit)
             unit_count += 1
             if (unit_count % 100 == 0) :
                 sys.stderr.write('.')
+            base_plurals = [base_unit.gettarget()]
+            if (base_unit.hasplural()) :
+                base_plurals = base_unit.gettarget().strings
             if (a_unit is None) : 
                 if (b_unit is None) :
                     # deleted in both, so don't merge into result
                     state = UnitState.RESOLVED | UnitState.MODE_MERGE
-                    for plural in range(len(base_unit.gettarget().strings)) :
+                    for plural in range(len(base_plurals)) :
                         self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
-                    removed += 1
-                    row +=1
+                        row +=1
+                        removed += 1
                     pass
                 else :
-                    for plural in range(len(base_unit.gettarget().strings)) :
-                        if (len(b_unit.gettarget().strings) > plural) :
-                            if (str(base_unit.gettarget().strings[plural]) == str(b_unit.gettarget().strings[plural])) :
+                    b_plurals = [b_unit.gettarget()]
+                    if (b_unit.hasplural()) :
+                        b_plurals = b_unit.gettarget().strings
+
+                    for plural in range(len(base_plurals)) :
+                        if (len(b_plurals) > plural) :
+                            if (unicode(base_plurals[plural]) == unicode(b_plurals[plural])) :
                                 # removed in A, unchanged in B
                                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                                 removed += 1
@@ -328,7 +377,7 @@ class PODiff(object) :
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE
                             self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
                             row+=1
-                    for plural in range(len(base_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
+                    for plural in range(len(base_plurals), len(b_plurals)) :
                         # plural only in B
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                         removed += 1
@@ -336,10 +385,13 @@ class PODiff(object) :
                         self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
                         row+=1
             else :
+                a_plurals = [a_unit.gettarget()]
+                if (a_unit.hasplural()) :
+                    a_plurals = a_unit.gettarget().strings
                 if (b_unit is None) :
-                    for plural in range(len(base_unit.gettarget().strings)) :
-                        if (len(a_unit.gettarget().strings) > plural) :
-                            if (str(base_unit.gettarget().strings[plural]) == str(a_unit.gettarget().strings[plural])) :
+                    for plural in range(len(base_plurals)) :
+                        if (len(a_plurals) > plural) :
+                            if (unicode(base_plurals[plural]) == unicode(a_plurals[plural])) :
                                 # removed in B, unchanged in A
                                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                                 removed += 1
@@ -356,7 +408,7 @@ class PODiff(object) :
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE
                             self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
                             row+=1
-                    for plural in range(len(base_unit.gettarget().strings), len(a_unit.gettarget().strings)) :
+                    for plural in range(len(base_plurals), len(a_plurals)) :
                         # plural only in A
                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                         removed += 1
@@ -364,14 +416,21 @@ class PODiff(object) :
                         self.show_side(Side.A, row, unit_count, a_unit, None, False, state, plural)
                         row+=1
                 else : # normal case both a and b present
-                    merge_unit = self.stores[Side.MERGE].addsourceunit(base_unit.source)
-                    if (base_unit.getcontext() is not None) :
-                        merge_unit.msgctxt = base_unit.msgctxt
-                    for plural in range(len(base_unit.gettarget().strings)) :
-                        if (len(a_unit.gettarget().strings) <= plural) :
-                            if (len(b_unit.gettarget().strings) <= plural) : 
+                    b_plurals = [b_unit.gettarget()]
+                    if (b_unit.hasplural()) :
+                        b_plurals = b_unit.gettarget().strings
+                    # always initialize the merge from a unit with plurals
+                    # if some have them and some don't
+                    if (a_unit.hasplural() and not base_unit.hasplural()) :
+                        merge_unit = self.init_unit(mergeStore, a_unit)
+                    if (merge_unit is None and b_unit.hasplural() and not base_unit.hasplural()) :
+                        merge_unit = self.init_unit(mergeStore, b_unit)
+                    for plural in range(len(base_plurals)) :
+                        if (len(a_plurals) <= plural) :
+                            if (len(b_plurals) <= plural) : 
                                 # neither a nor b has plural
-                                set_plural(merge_unit, None, plural)
+                                if (merge_unit is not None) :
+                                    set_plural(merge_unit, None, plural)
                                 state = UnitState.RESOLVED | UnitState.MODE_MERGE
                                 removed += 1
                                 self.show_side(Side.BASE, row, unit_count, base_unit, None, False, state, plural)
@@ -380,16 +439,20 @@ class PODiff(object) :
                                 # b has plural, not a
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE | UnitState.USED_B
                                 self.unresolved.append(row)
+                                if (merge_unit is None) :
+                                    merge_unit = self.init_unit(mergeStore, b_unit)
                                 self.set_plural(merge_unit, b_unit, plural)
                                 self.show_side(Side.BASE, row, unit_count, base_unit, [b_unit], False, state, plural)
                                 self.show_side(Side.B, row, unit_count, b_unit, [base_unit], False, state, plural)
                                 new_in_b += 1
                                 row+=1
                         else :
-                            if (len(b_unit.gettarget().strings) <= plural) : 
+                            if (len(b_plurals) <= plural) : 
                                 # a has plural, not b
                                 state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE | UnitState.USED_A
                                 self.unresolved.append(row)
+                                if (merge_unit is None) :
+                                    merge_unit = self.init_unit(mergeStore, a_unit)
                                 self.set_plural(merge_unit, a_unit, plural)
                                 self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit], False, state, plural)
                                 self.show_side(Side.A, row, unit_count, a_unit, [base_unit], False, state, plural)
@@ -397,16 +460,20 @@ class PODiff(object) :
                                 row+=1
                             else :
                                 # both have plural
-                                if (str(base_unit.gettarget().strings[plural]) == str(a_unit.gettarget().strings[plural])) :
-                                # a unchanged
-                                    if (str(base_unit.gettarget().strings[plural]) == str(b_unit.gettarget().strings[plural])) :
+                                if (unicode(base_plurals[plural]) == unicode(a_plurals[plural])) :
+                                    # a unchanged
+                                    if (unicode(base_plurals[plural]) == unicode(b_plurals[plural])) :
                                         # unchanged in both, so silently merge
+                                        if (merge_unit is None) :
+                                            merge_unit = self.init_unit(mergeStore, base_unit)
                                         if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
                                         else : set_plural(merge_unit, base_unit, plural)
                                     else :
                                         # only b was modified, so use b's text
                                         state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                                         resolved_from_b += 1
+                                        if (merge_unit is None) :
+                                            merge_unit = self.init_unit(mergeStore, b_unit)
                                         if (plural == 0) : merge_unit.merge(b_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, b_unit, plural)
                                         self.show_side(Side.BASE, row, unit_count, base_unit, [b_unit], False, state, plural)
@@ -416,11 +483,13 @@ class PODiff(object) :
                                         row+=1
                                 else :
                                     # a modified
-                                    if (str(base_unit.gettarget().strings[plural]) == str(b_unit.gettarget().strings[plural]) or
-                                        str(a_unit.gettarget().strings[plural]) == str(b_unit.gettarget().strings[plural])) :
+                                    if (unicode(base_plurals[plural]) == unicode(b_plurals[plural]) or
+                                        unicode(a_plurals[plural]) == unicode(b_plurals[plural])) :
                                         # b unchanged or the same as a, so use a
                                         state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                                         resolved_from_a += 1
+                                        if (merge_unit is None) :
+                                            merge_unit = self.init_unit(mergeStore, b_unit)
                                         if (plural == 0) : merge_unit.merge(a_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, a_unit, plural)
                                         self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit], False, state, plural)
@@ -432,6 +501,8 @@ class PODiff(object) :
                                         # both a and b changed
                                         state = UnitState.AMBIGUOUS | UnitState.MODE_MERGE
                                         self.unresolved.append(row)
+                                        if (merge_unit is None) :
+                                            merge_unit = self.init_unit(mergeStore, base_unit)
                                         if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, base_unit, plural)
                                         self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit, b_unit], False, state, plural)
@@ -439,9 +510,9 @@ class PODiff(object) :
                                         self.show_side(Side.B, row, unit_count, b_unit, [base_unit, a_unit], False, state, plural)
                                         self.show_side(Side.MERGE, row, unit_count, merge_unit, [a_unit, b_unit], False, state, plural)
                                         row+=1
-                    for plural in range(len(base_unit.gettarget().strings), len(a_unit.gettarget().strings)) :
+                    for plural in range(len(base_plurals), len(a_plurals)) :
                         # plural in a, not in base
-                        if (len(b_unit.gettarget().strings) <= plural) :
+                        if (len(b_plurals) <= plural) :
                             # plural not in B
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                             self.set_plural(merge_unit, a_unit, plural)
@@ -449,7 +520,7 @@ class PODiff(object) :
                             self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                             resolved_from_a += 1
                         else :
-                            if (str(b_unit.gettarget().strings[plural]) == str(a_unit.gettarget().strings[plural])) :
+                            if (unicode(b_plurals[plural]) == unicode(a_plurals[plural])) :
                                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                                 self.set_plural(merge_unit, a_unit, plural)
                                 self.show_side(Side.A, row, unit_count, a_unit, None, False, state, plural)
@@ -464,11 +535,12 @@ class PODiff(object) :
                                 self.show_side(Side.B, row, unit_count, b_unit, [a_unit], False, state, plural)
                                 self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                         row+=1
-                    for plural in range(len(base_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
-                        if plural >= len(a_unit.gettarget().strings) :
+                    for plural in range(len(base_plurals), len(b_plurals)) :
+                        # show extra plurals in b
+                        if plural >= len(a_plurals) :
                             state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                             self.set_plural(merge_unit, b_unit, plural)
-                            self.show_side(Side.B, row, unit_count, a_unit, None, False, state, plural)
+                            self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
                             self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                             resolved_from_b += 1
                             new_in_b += 1
@@ -478,13 +550,14 @@ class PODiff(object) :
         plural_warning = _("{0}\nID '{1}' has no plural in base, but has a plural with ID '{2}' in {3}. Only one should be merged.")
         # now find new entries in a
         for a_unit in self.stores[Side.A].unit_iter():
+            if a_unit.isheader() : continue
             base_unit = self.find_unit(Side.BASE, a_unit)
             if base_unit is not None : continue
             unit_count += 1
             b_unit = self.find_unit(Side.B, a_unit)
             ambiguous_plural = False
             if (a_unit.hasplural()) :
-                main_id = str(a_unit.getsource())
+                main_id = unicode(a_unit.getsource())
                 non_plurals = self.stores[Side.BASE].findunits(main_id)
                 for non_plural in non_plurals :
                     if non_plural.getcontext() == a_unit.getcontext() :
@@ -495,12 +568,17 @@ class PODiff(object) :
                             self.show_warning(plural_warning.format(a_unit.getcontext(), main_id, a_unit.getsource().strings[1], _("Files A and B")))
                         break
                     
-            merge_unit = self.stores[Side.MERGE].addsourceunit(a_unit.source)
-            if (a_unit.getcontext() is not None) :
-                merge_unit.msgctxt = a_unit.msgctxt
-            for plural in range(len(a_unit.gettarget().strings)) :
-                if (b_unit is None or (len(a_unit.gettarget().strings) > plural and
-                    str(b_unit.gettarget().strings[plural]) == str(a_unit.gettarget().strings[plural]))):
+            merge_unit = self.init_unit(mergeStore, a_unit)
+            a_plurals = [a_unit.gettarget()]
+            if (a_unit.hasplural()) :
+                a_plurals = a_unit.gettarget().strings
+            if b_unit is not None:
+                b_plurals = [b_unit.gettarget()]
+                if (b_unit.hasplural()) :
+                    b_plurals = b_unit.gettarget().strings
+            for plural in range(len(a_plurals)) :
+                if (b_unit is None or (len(a_plurals) > plural and
+                    unicode(b_plurals[plural]) == unicode(a_plurals[plural]))):
                     # use a
                     state = UnitState.MODE_MERGE | UnitState.USED_A
                     if ambiguous_plural : state |= UnitState.AMBIGUOUS
@@ -529,7 +607,7 @@ class PODiff(object) :
                     self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                     row+=1
             if (b_unit is not None) :
-                for plural in range(len(a_unit.gettarget().strings), len(b_unit.gettarget().strings)) :
+                for plural in range(len(a_plurals), len(b_plurals)) :
                     state = UnitState.MODE_MERGE | UnitState.USED_B
                     if ambiguous_plural : state |= UnitState.AMBIGUOUS
                     else : state |= UnitState.RESOLVED
@@ -541,6 +619,7 @@ class PODiff(object) :
                     row+=1
         # find new entries only in b
         for b_unit in self.stores[Side.B].unit_iter():
+            if b_unit.isheader() : continue
             base_unit = self.find_unit(Side.BASE, b_unit)
             if base_unit is not None : continue
             a_unit = self.find_unit(Side.A, b_unit)
@@ -550,12 +629,10 @@ class PODiff(object) :
                 state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                 resolved_from_b += 1
                 new_in_b += 1
-                merge_unit = self.stores[Side.MERGE].addsourceunit(b_unit.source)
-                if (b_unit.getcontext() is not None) :
-                    merge_unit.msgctxt = b_unit.msgctxt
+                merge_unit = self.init_unit(mergeStore, b_unit)
                 merge_unit.merge(b_unit, overwrite, comments)
                 if (b_unit.hasplural()) :
-                    main_id = str(b_unit.getsource())
+                    main_id = unicode(b_unit.getsource())
                     non_plurals = self.stores[Side.BASE].findunits(main_id)
                     for non_plural in non_plurals :
                         if non_plural.getcontext() == b_unit.getcontext() :
@@ -563,7 +640,10 @@ class PODiff(object) :
                             state |= UnitState.AMBIGUOUS
                             self.show_warning(plural_warning.format(b_unit.getcontext(), main_id, b_unit.getsource().strings[1], _("File B")))
                             break
-                for plural in range(len(b_unit.gettarget().strings)) :
+                b_plurals = [b_unit.gettarget()]
+                if (b_unit.hasplural()) :
+                    b_plurals = b_unit.gettarget().strings
+                for plural in range(len(b_plurals)) :
                     if (plural > 0) : self.set_plural(merge_unit, b_unit, plural)
                     self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
                     self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
