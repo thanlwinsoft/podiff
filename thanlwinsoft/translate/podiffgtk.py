@@ -33,24 +33,48 @@ from textdiff import find_matches
 GETTEXT_DOMAIN='podiff'
 translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
 
-def find_frame_pos(widget) :
-    if widget is None : return None
-    frame = widget.get_parent()
-    while (not isinstance(frame, gtk.Frame)) :
-        frame = frame.get_parent()
-        if frame is None : return None
-    side = frame.get_parent().child_get_property(frame, "left-attach")
-    row = frame.get_parent().child_get_property(frame, "top-attach")-1
-    return (side, row)
 
+class PoUnitData(object) :
+    CONTEXT, SOURCE, TARGET = (0, 1, 2)
+    def __init__(self, index, unit, cf_units, state, plural) :
+        self.index = index
+        self.unit = unit
+        self.cf_units = cf_units
+        self.state = state
+        self.plural = plural
+
+    def find(self, text, use_context, use_msgid, use_translation, case_sensitive, backwards) :
+        """Search for the specified text in the current unit and return the component that matched at the offset"""
+        data = []
+        if (self.unit.hasplural()) :
+            if (use_context) : data.append((PoUnitData.CONTEXT, self.unit.getcontext()))
+            if (use_msgid) : data.append((PoUnitData.SOURCE, self.unit.getsource().strings[self.plural]))
+            if (use_translation) : data.append((PoUnitData.TARGET, self.unit.gettarget().strings[self.plural]))
+        else :
+            if (use_context) : data.append((PoUnitData.CONTEXT, self.unit.getcontext()))
+            if (use_msgid) : data.append((PoUnitData.SOURCE, self.unit.getsource()))
+            if (use_translation) : data.append((PoUnitData.TARGET, self.unit.gettarget()))
+        if (backwards) : data.reverse()
+        
+        for component, hay in data :
+            if not case_sensitive : hay = hay.lower()
+            if (backwards) :
+                found_at = hay.rfind(text)
+            else :
+                found_at = hay.find(text)
+            if found_at != -1 :
+                # found the text
+                return (component, found_at)
+        return None
 
 class PoUnitGtk(object) :
     """Displays a frame showing the contents of a translatable unit."""
     po_diff = None
     diff_colors = [gtk.gdk.Color(1.0,0.5,0.5), gtk.gdk.Color(0.5,1.0,0.5), gtk.gdk.Color(0.5,0.5,1.0), gtk.gdk.Color(1.0,1.0,0.5), gtk.gdk.Color(1.0,0.5,1.0), gtk.gdk.Color(0.5,1.0,1.0), gtk.gdk.Color(0.5,0.5,0.5)]
-    def __init__(self, side, state, plural):
+    def __init__(self, side, state):
         self.side = side
-        self.plural = plural
+        self.unit_index = None
+        self.unit_change = False
         self.scrolled = gtk.ScrolledWindow()
         self.scrolled.set_property("hscrollbar-policy", gtk.POLICY_AUTOMATIC)
         self.scrolled.set_property("vscrollbar-policy", gtk.POLICY_AUTOMATIC)
@@ -65,10 +89,6 @@ class PoUnitGtk(object) :
         self.source.set_wrap_mode(gtk.WRAP_WORD)
         self.source_buffer = gtk.TextBuffer()
         self.source_buffer.set_text(_("Source"))
-        if (self.plural > 0) :
-            self.source.set_tooltip_text(_("Source (plural)"))
-        else :
-            self.source.set_tooltip_text(_("Source"))
         self.source.set_buffer(self.source_buffer)
         self.source.set_editable(False)
         self.source.show()
@@ -78,18 +98,11 @@ class PoUnitGtk(object) :
         for i in range(3) :
             self.diff_tag.append(gtk.TextTag(name="diff" + str(i)))
             self.diff_tag[i].set_property("background-gdk", self.diff_colors[self.side + i])
-#            if (i == 0) : self.diff_tag[i].set_property("style", pango.STYLE_ITALIC)
-#            if (i == 1) : self.diff_tag[i].set_property("underline", pango.UNDERLINE_SINGLE)
-#            if (i == 2) : self.diff_tag[i].set_property("weight", pango.WEIGHT_BOLD)
             self.target_buffer.get_tag_table().add(self.diff_tag[i])
         self.edit_tag = gtk.TextTag(name="edit")
         self.edit_tag.set_property("background-gdk", self.diff_colors[len(self.diff_colors) - 1])
         self.target_buffer.get_tag_table().add(self.edit_tag)
         self.target_buffer.set_text("Target")
-        if (self.plural > 0) :
-            self.target.set_tooltip_text(_("Target [{0:d}]").format(self.plural))
-        else :
-            self.target.set_tooltip_text(_("Target"))
         self.target.set_buffer(self.target_buffer)
         self.target.set_editable(True)
         self.target.show()
@@ -103,6 +116,7 @@ class PoUnitGtk(object) :
         self.copy_button.show()
         self.id_label = gtk.Label()
         self.id_label.show()
+        self.img = None
         if (state & UnitState.MODE_MERGE) :
             self.frame.set_size_request(125, -1)
             if (self.side == Side.BASE or self.side == Side.A or self.side == Side.B) :
@@ -114,13 +128,9 @@ class PoUnitGtk(object) :
                 self.title_box.add(arrow)
                 self.title_box.add(self.copy_button)
             else :
-                img = gtk.Image()
-                if (state & UnitState.RESOLVED) :
-                    img.set_from_file(os.path.dirname(__file__) + "/merged.png")
-                else :           
-                    img.set_from_file(os.path.dirname(__file__) + "/unmerged.png")
-                img.show()             
-                self.title_box.add(img)
+                self.img = gtk.Image()
+                self.img.show()             
+                self.title_box.add(self.img)
                 self.title_box.add(self.id_label)
                 self.copy_button.hide()
                 pass            
@@ -155,50 +165,68 @@ class PoUnitGtk(object) :
         self.scrolled.add(self.viewport)
         self.frame.add(self.scrolled)
 
-    def set_unit(self, index, unit, cf_units=None, modified=False) :
+    def set_unit(self, unit_data, modified=False) :
+        self.unit_change = True
+        self.plural = unit_data.plural    
+        if (self.plural > 0) :
+            self.source.set_tooltip_text(_("Source (plural)"))
+            self.target.set_tooltip_text(_("Target [{0:d}]").format(self.plural))
+        else :
+            self.source.set_tooltip_text(_("Source"))
+            self.target.set_tooltip_text(_("Target"))
+        if (self.side == Side.MERGE) :
+            if (unit_data.state & UnitState.RESOLVED) :
+                self.img.set_from_file(os.path.dirname(__file__) + "/merged.png")
+            else :
+                if (unit_data.state & UnitState.AMBIGUOUS):           
+                    self.img.set_from_file(os.path.dirname(__file__) + "/unmerged.png")
+                else :
+                    if self.img is not None and hasattr(self.img, 'clear') :
+                        self.img.clear()
+
 #        self.source_buffer.set_text(unit.getid())
 #        self.target_buffer.set_text(unit.gettarget())
-        self.unit_index = index
-        self.unit = unit
-        if (unit.hasplural()) :
-            self.id_label.set_text(_("{0:d} [{1:d}]").format(index, self.plural))
+        self.unit_index = unit_data.index
+        self.unit = unit_data.unit
+        if (self.unit.hasplural()) :
+            self.id_label.set_text(_("{0:d} [{1:d}]").format(self.unit_index, self.plural))
         else :
-            self.id_label.set_text(str(index))
-        comments = str(unit.getnotes())
-        for l in unit.getlocations() :
+            self.id_label.set_text(str(self.unit_index))
+        comments = str(self.unit.getnotes())
+        for l in self.unit.getlocations() :
             comments += "\n" + l
         self.id_label.set_tooltip_text(comments)
         if (self.plural == 0) :
-            self.source_buffer.set_text(unit.source)
+            self.source_buffer.set_text(self.unit.source)
         else :
-            self.source_buffer.set_text(unit.source.strings[1])
-        if unit.hasplural() :
-            if (len(unit.gettarget().strings) > self.plural) :
-                self.target_buffer.set_text(unit.gettarget().strings[self.plural])
+            self.source_buffer.set_text(self.unit.source.strings[1])
+        if self.unit.hasplural() :
+            if (len(self.unit.gettarget().strings) > self.plural) :
+                self.target_buffer.set_text(self.unit.gettarget().strings[self.plural])
             else :
                 self.target_buffer.set_text(u"")
         else :
             if (self.plural == 0) :
-                self.target_buffer.set_text(unit.gettarget());
+                self.target_buffer.set_text(self.unit.gettarget());
             else :
                 self.target_buffer.set_text(u"")
-        self.context_buffer.set_text(unit.getcontext())
+        self.context_buffer.set_text(self.unit.getcontext())
         self.target_buffer.connect("insert-text", self.insert_text_event_cb, self.target)
         self.target_buffer.connect("delete-range", self.delete_range_event_cb, self.target)
         self.target_buffer.connect("changed", self.changed_event_cb, self.target)
-        if len(unit.getcontext()) > 0 :
+        if len(self.unit.getcontext()) > 0 :
             self.context.show()
         else :
             self.context.hide()
         self.po_diff.on_dirty()
-        if (cf_units is not None) :
+        if (unit_data.cf_units is not None) :
             # print unit.gettarget()
             # print cf_unit.gettarget()
-            plurals = [ unit.gettarget() ]
-            if unit.hasplural():
-                plurals = unit.gettarget().strings
-            for j in range(len(cf_units)) :
-                cf_unit = cf_units[j]
+            plurals = [ self.unit.gettarget() ]
+            if self.unit.hasplural():
+                plurals = self.unit.gettarget().strings
+            for j in range(len(unit_data.cf_units)) :
+                cf_unit = unit_data.cf_units[j]
                 cf_plurals = [ cf_unit.gettarget() ]
                 if cf_unit.hasplural() :
                     cf_plurals = cf_unit.gettarget().strings
@@ -224,15 +252,34 @@ class PoUnitGtk(object) :
                 self.target.modify_text(gtk.STATE_NORMAL, gtk.gdk.Color(1.0, 0.0, 0.0))
         else :
             self.target.modify_text(gtk.STATE_NORMAL, gtk.gdk.Color(0, 0, 0))
+        self.unit_change = False
+
+    @staticmethod
+    def find_frame_pos(widget) :
+        if widget is None : return None
+        frame = widget.get_parent()
+        while (not isinstance(frame, gtk.Frame)) :
+            frame = frame.get_parent()
+            if frame is None : return None
+        side = frame.get_parent().child_get_property(frame, "left-attach")
+
+        row = frame.get_parent().child_get_property(frame, "top-attach")
+        filter_resolved = PoUnitGtk.po_diff.builder.get_object("toolbuttonFilterResolved").get_active()
+        if filter_resolved :
+            row = PoUnitGtk.po_diff.unresolved[row + PoUnitGtk.po_diff.prev_page - 1]
+        else :
+            row += PoUnitGtk.po_diff.prev_page - 1
+        return (side, row)
 
     def copy_button_release_event_cb(self, widget, data=None) :
-        (side, row) = find_frame_pos(widget)
+        (side, row) = self.find_frame_pos(widget)
         if (self.po_diff is not None) :
             poUnit = self.po_diff.unit_dict[(side, row)]
-            self.po_diff.merge_from(side, row, poUnit.unit_index, poUnit.unit, poUnit.plural)
+            self.po_diff.merge_from(side, row, poUnit.index, poUnit.unit, poUnit.plural)
     
     def insert_text_event_cb(self, textbuffer, iter, text, length, user_param1=None) :
-        (side, row) = find_frame_pos(user_param1)
+        if self.unit_change : return
+        (side, row) = self.find_frame_pos(user_param1)
         poUnit = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
         poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
@@ -243,14 +290,16 @@ class PoUnitGtk(object) :
 #        textbuffer.apply_tag_by_name("edit", iter, iter)
     
     def changed_event_cb(self, textbuffer, user_param1=None) :
-        (side, row) = find_frame_pos(user_param1)
+        if self.unit_change : return
+        (side, row) = self.find_frame_pos(user_param1)
         poUnit = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
         poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
         self.po_diff.on_dirty()
         
     def delete_range_event_cb(self, textbuffer, start, end, user_param1=None) :
-        (side, row) = find_frame_pos(user_param1)
+        if self.unit_change : return
+        (side, row) = self.find_frame_pos(user_param1)
         poUnit = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
         poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
@@ -273,7 +322,7 @@ class PoUnitGtk(object) :
             ins = text_buffer.get_iter_at_offset(offset + index + len(text))
             bound = text_buffer.get_iter_at_offset(offset + index)
         text_buffer.select_range(ins, bound)
-        side, row = find_frame_pos(view)
+        side, row = PoUnitGtk.find_frame_pos(view)
         self.po_diff.builder.get_object("toolbuttonFilterResolved").set_active(False)
         sb = self.po_diff.builder.get_object("unitVscrollbar")
         if (sb.get_value() > row or sb.get_value() + PoDiffGtk.UNITS_PER_PAGE <= row) :
@@ -284,7 +333,7 @@ class PoUnitGtk(object) :
         else :
             self.po_diff.builder.get_object("replaceButton").set_sensitive(False)
         return True
-        
+
     def find(self, text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
         started = False
         if (not isinstance(focus, gtk.TextView)) :
@@ -329,6 +378,7 @@ class PoDiffGtk (PoDiff):
         self.clear()
         self.scrolling = False
         self.search_iter = None
+        self.unit_frames = {}
         self.config = ConfigParser.ConfigParser()
         try :
             config_filename = os.path.expanduser(os.path.join(PoDiffGtk.CONFIG_DIR, PoDiffGtk.CONFIG_FILENAME))
@@ -379,29 +429,39 @@ class PoDiffGtk (PoDiff):
             max_visible_row = int(sb.get_adjustment().upper)
             min_visible_row = max(0, max_visible_row - PoDiffGtk.UNITS_PER_PAGE)
         return (min_visible_row, max_visible_row)
+
+    def show_row(self, visible_row, row) :
+        for col in range(0,4) :
+            if (col, visible_row) not in self.unit_frames : continue
+            unit_frame = self.unit_frames[(col, visible_row)]
+            if ((col, row) in self.unit_dict):
+                unit_data = self.unit_dict[(col, row)]
+                unit_frame.set_unit(unit_data)
+                unit_frame.frame.show()
+            else:
+                unit_frame.frame.hide()
     
-    def show_side(self, side, row, index, unit, cf_unit, modified, state, plural) :
+    def show_side(self, side, row, index, unit, cf_units, modified, state, plural) :
         shown = False
-        if (side,row) in self.unit_dict:
-            self.diff_table.remove(self.unit_dict[(side, row)].frame)
-            shown = self.unit_dict[(side, row)].frame
-            del self.unit_dict[(side, row)]
-        diff = PoUnitGtk(side, state, plural)
+#        if (side,row) in self.unit_dict:
+#            self.diff_table.remove(self.unit_dict[(side, row)].frame)
+#            shown = self.unit_dict[(side, row)].frame
+#            del self.unit_dict[(side, row)]
+        #diff = PoUnitGtk(side, state, plural)
+        diff = PoUnitData(index, unit, cf_units, state, plural)
         self.unit_dict[(side, row)] = diff
-        self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row+1, bottom_attach=row+2, xoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK, yoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK)
-        diff.set_unit(index, unit, cf_unit, modified)
+        #self.diff_table.attach(diff.frame, left_attach=side, right_attach=side+1, top_attach=row+1, bottom_attach=row+2, xoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK, yoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK)
+        #diff.set_unit(index, unit, cf_unit, modified)
         sb = self.builder.get_object("unitVscrollbar")
         min_visible_row, max_visible_row = self.page_range()
         if self.builder.get_object("toolbuttonFilterResolved").get_active() :
             if row in self.unresolved :
                 i = self.unresolved.index(row)
                 if (i >= min_visible_row and i < max_visible_row) :
-                    diff.frame.show()
+                    self.show_row(i - min_visible_row, row)
         else :
             if (row >= min_visible_row and row < max_visible_row) :
-                    diff.frame.show()
-        # if (state & podiff.UnitState.AMBIGUOUS) :
-        # diff.frame.show()
+                self.show_row(row - min_visible_row, row)
 
     def set_total_units(self, row_count) :
         self.unit_count = row_count
@@ -414,41 +474,47 @@ class PoDiffGtk (PoDiff):
         self.show_units(0)
     
     def hide_units(self, filter_resolved = None) :
-        min_show, max_show = self.page_range(self.prev_page)
+        pass
+        
+#        min_show, max_show = self.page_range(self.prev_page)
         # print "hide ", min_show, max_show
-        if filter_resolved is None :
-            filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
-        if filter_resolved :
-            for i in range(min_show, max_show) :
-                row = self.unresolved[i]
-                for col in range(0,4) :
-                    key = (col, row)
-                    if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.hide()
-        else :
-            for row in range(min_show, max_show) :
-                for col in range(0,4) :
-                    key = (col, row)
-                    if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.hide()
+#        if filter_resolved is None :
+#            filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
+#        if filter_resolved :
+#            for i in range(min_show, max_show) :
+#                row = self.unresolved[i]
+#                for col in range(0,4) :
+#                    key = (col, row)
+#                    if key in self.unit_dict :
+#                        self.unit_dict[(col, row)].frame.hide()
+#        else :
+#            for row in range(min_show, max_show) :
+#                for col in range(0,4) :
+#                    key = (col, row)
+#                    if key in self.unit_dict :
+#                        self.unit_dict[(col, row)].frame.hide()
+
+    def is_filtered(self) :
+        return self.builder.get_object("toolbuttonFilterResolved").get_active()
 
     def show_units(self, value) :
         min_show, max_show = self.page_range(int(value))
         # print "show ", min_show, max_show
-        filter_resolved = self.builder.get_object("toolbuttonFilterResolved").get_active()
-        if filter_resolved :
+        if self.is_filtered() :
             for i in range(min_show, max_show) :
                 row = self.unresolved[i]
-                for col in range(0,4) :
-                    key = (col, row)
-                    if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.show()
+                self.show_row(i - min_show, row)
+#                for col in range(0,4) :
+#                    key = (col, row)
+#                    if key in self.unit_dict :
+#                        self.unit_dict[(col, row)].frame.show()
         else :
             for row in range(min_show, max_show) :
-                for col in range(0,4) :
-                    key = (col, row)
-                    if key in self.unit_dict :
-                        self.unit_dict[(col, row)].frame.show()
+                self.show_row(row - min_show, row)
+#                for col in range(0,4) :
+#                    key = (col, row)
+#                    if key in self.unit_dict :
+#                        self.unit_dict[(col, row)].frame.show()
         self.prev_page = value
         return True    
 
@@ -470,6 +536,7 @@ class PoDiffGtk (PoDiff):
         statusbar.push(1, msg)
     
     def show_warning(self, msg) :
+        """Display a warning message to the user"""
         print >> sys.stderr, msg
         msg_dialog = gtk.MessageDialog(self.win, gtk.DIALOG_MODAL, gtk.MESSAGE_WARNING,
                 gtk.BUTTONS_OK, msg)
@@ -478,6 +545,7 @@ class PoDiffGtk (PoDiff):
             msg_dialog.hide()
 
     def set_diff_titles(self, a, b) :
+        """Set Titles for diff mode and initialize unit table"""
         t = self.builder.get_object("diffTitleA")
         t.set_text(a)
         t.set_tooltip_text(a)
@@ -488,14 +556,28 @@ class PoDiffGtk (PoDiff):
         t.hide()
         t = self.builder.get_object("mergeTitle")
         t.hide()        
+        self.init_unit_frames(range(1,3), UnitState.MODE_DIFF)
 
     def set_merge_titles(self, base, a, b, merge) :
+        """Set Titles for merge mode and initialize unit table"""
         self.builder.get_object("toolbuttonFilterResolved").set_sensitive(True)
         for label, text in zip(self.title_ids, [base, a, b, merge]):
             t = self.builder.get_object(label)
             t.set_text(text)
             t.set_tooltip_text(text)
             t.show()
+        self.init_unit_frames(range(0,4), UnitState.MODE_MERGE)
+            
+    def init_unit_frames(self, cols, mode) :
+#        self.diff_table.foreach(self.diff_table.remove)
+        for unit_frame in self.unit_frames.itervalues() :
+            self.diff_table.remove(unit_frame)
+        self.unit_frames = {}
+        for col in cols:
+            for row in range(0, PoDiffGtk.UNITS_PER_PAGE) :
+                unit_frame = PoUnitGtk(col, UnitState.MODE_MERGE)
+                self.unit_frames[(col, row)] = unit_frame
+                self.diff_table.attach(unit_frame.frame, col, col+1, row+1, row+2, xoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK, yoptions=gtk.EXPAND|gtk.FILL|gtk.SHRINK)
 
     def saveMenuItem_button_release_event_cb(self, widget, data=None):
         self.saveAll()
@@ -671,6 +753,22 @@ http://www.gnu.org/licenses/"""))
     def closeButton_clicked_cb(self, button, data=None) :
         dialog = self.builder.get_object("searchDialog")
         dialog.hide()
+        
+    def make_row_visible(self, row) :
+        """Make the specified row visible, scrolling the view if needed. 
+        Returns index of row in current view."""
+        if self.is_filtered() :
+            filtered_index = self.unresolved.index(row)
+            visible = filtered_index - self.prev_page
+            if (visible < 0 or visible >= PoDiffGtk.UNITS_PER_PAGE) :
+                self.show_units(filtered_index)
+                visible = 0
+        else :
+            visible = row - self.prev_page
+            if (visible < 0 or visible >= PoDiffGtk.UNITS_PER_PAGE) :
+                self.show_units(row)
+                visible = 0
+        return visible
 
     def search(self) :
         """Search for a string within the units, starting at currently selected unit."""
@@ -690,23 +788,47 @@ http://www.gnu.org/licenses/"""))
         if backwards : step = -1
         else : step = 1
         focus = self.win.get_focus()
-        from_unit = find_frame_pos(focus)
+        from_unit = PoUnitGtk.find_frame_pos(focus)
         if (from_unit is None) :
             from_unit = (0, 0)
             side = Side.BASE
             row = 0
         else :
             side, row = from_unit
+            # it must be visible, so try to find the corresponding PoUnitGtk
+            if self.is_filtered() :
+                visible = self.unresolved.index(row) - self.prev_page
+            else:
+                visible = row - self.prev_page
+            unit_frame = self.unit_frames[(side, visible)]
+            if unit_frame.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
+                # the word was found, so add it to combo list of previous searches
+                ai = search_combo.get_active_iter()
+                if ai is None :
+                    search_combo.prepend_text(text)
+                    search_combo.set_active_iter(search_combo.get_model().get_iter_first())
+                return True
+                
         while (True) :
             if (side, row)  in self.unit_dict :
-                po_unit = self.unit_dict[(side, row)]
-                if po_unit.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
-                    # print "Found at ", text, side, row
-                    ai = search_combo.get_active_iter()
-                    if ai is None :
-                        search_combo.prepend_text(text)
-                        search_combo.set_active_iter(search_combo.get_model().get_iter_first())
-                    return True
+                unit_data = self.unit_dict[(side, row)]
+                found = unit_data.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards)
+                if found is not None:
+                    # find or activate the unit
+                    visible_row = self.make_row_visible(row)
+                    unit_frame = self.unit_frames[(side, visible_row)]
+                    # TODO avoid doing the search twice, since unit_data.find gives us the position info
+                    if unit_frame.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
+                        # print "Found at ", text, side, row
+                        # the word was found, so add it to combo list of previous searches
+                        ai = search_combo.get_active_iter()
+                        if ai is None :
+                            search_combo.prepend_text(text)
+                            search_combo.set_active_iter(search_combo.get_model().get_iter_first())
+                        return True
+                    else :
+                        print "Not found in PoUnitGtk at " + str(side) + "," + str(row) 
+                        #assert(False) # shoundn't happen
             side += step
             if (side < 0) :
                 side = Side.MERGE
@@ -730,7 +852,7 @@ http://www.gnu.org/licenses/"""))
         case_sensitive = self.builder.get_object("checkbuttonCase").get_active()
         if not case_sensitive : text = text.lower()
         focus = self.win.get_focus()
-        from_unit = find_frame_pos(focus)
+        from_unit = PoUnitGtk.find_frame_pos(focus)
         if from_unit is not None and isinstance(focus, gtk.TextView) and focus.get_editable():
             text_buffer = focus.get_buffer()
             start = text_buffer.get_iter_at_mark(text_buffer.get_insert())

@@ -234,7 +234,7 @@ class PoDiff(object) :
             to_unit.settarget(from_unit.gettarget())
         else :
             new_target = to_unit.gettarget()
-            if unit.hasplural():
+            if to_unit.hasplural():
                 while (len(new_target.strings) < plural + 1) :
                     new_target.strings.append(u"")
                 new_target.strings[plural] = from_unit.gettarget().strings[plural]

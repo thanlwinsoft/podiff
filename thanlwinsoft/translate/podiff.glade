@@ -269,7 +269,7 @@
                 <child>
                   <object class="GtkLabel" id="baseTitle">
                     <property name="visible">True</property>
-                    <property name="ellipsize">start</property>
+                    <property name="ellipsize">middle</property>
                   </object>
                   <packing>
                     <property name="y_options"></property>
@@ -279,7 +279,7 @@
                   <object class="GtkLabel" id="diffTitleA">
                     <property name="visible">True</property>
                     <property name="label" translatable="yes">left</property>
-                    <property name="ellipsize">start</property>
+                    <property name="ellipsize">middle</property>
                   </object>
                   <packing>
                     <property name="left_attach">1</property>
@@ -291,7 +291,7 @@
                   <object class="GtkLabel" id="diffTitleB">
                     <property name="visible">True</property>
                     <property name="label" translatable="yes">right</property>
-                    <property name="ellipsize">start</property>
+                    <property name="ellipsize">middle</property>
                   </object>
                   <packing>
                     <property name="left_attach">2</property>
@@ -302,7 +302,7 @@
                 <child>
                   <object class="GtkLabel" id="mergeTitle">
                     <property name="visible">True</property>
-                    <property name="ellipsize">start</property>
+                    <property name="ellipsize">middle</property>
                   </object>
                   <packing>
                     <property name="left_attach">3</property>
