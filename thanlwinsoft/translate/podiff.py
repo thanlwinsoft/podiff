@@ -268,8 +268,12 @@ class PoDiff(object) :
             return
         assert(plural == 0 or source_unit.hasplural())
         if not source_unit.hasplural() and plural == 0:
-            target_unit.setsource(source_unit.getsource())
-            new_target = source_unit.gettarget()
+            if target_unit.hasplural() :
+                target_unit.source.strings[0] = source_unit.getsource()
+                new_target.strings[0] = source_unit.gettarget()
+            else :
+                target_unit.setsource(source_unit.getsource())
+                new_target = source_unit.gettarget()
         else :
             if not target_unit.hasplural() or not isinstance(target_unit.getsource(), multistring):
                 target_unit.setsource(source_unit.getsource())
@@ -280,8 +284,6 @@ class PoDiff(object) :
             assert(plural < len(source_unit.gettarget().strings))
             new_target.strings[plural] = source_unit.gettarget().strings[plural]
         target_unit.settarget(new_target)
-        sys.stderr.write(unicode(type(source_unit.getsource())) + " " + unicode(type(target_unit.getsource())) + "\n")
-        sys.stderr.write(unicode(type(source_unit.gettarget())) + " " + unicode(type(new_target)) + "\n")
 
     def init_unit(self, store, base_unit) :
         assert(base_unit is not None)
@@ -469,15 +471,16 @@ class PoDiff(object) :
                                         # unchanged in both, so silently merge
                                         if (merge_unit is None) :
                                             merge_unit = self.init_unit(mergeStore, base_unit)
-                                        if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
-                                        else : set_plural(merge_unit, base_unit, plural)
+                                        if (plural == 0 and not merge_unit.hasplural()) :
+                                            merge_unit.merge(base_unit, overwrite, comments)
+                                        else : self.set_plural(merge_unit, base_unit, plural)
                                     else :
                                         # only b was modified, so use b's text
                                         state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_B
                                         resolved_from_b += 1
                                         if (merge_unit is None) :
                                             merge_unit = self.init_unit(mergeStore, b_unit)
-                                        if (plural == 0) : merge_unit.merge(b_unit, overwrite, comments)
+                                        if (plural == 0 and not merge_unit.hasplural()) : merge_unit.merge(b_unit, overwrite, comments)
                                         else : self.set_plural(merge_unit, b_unit, plural)
                                         self.show_side(Side.BASE, row, unit_count, base_unit, [b_unit], False, state, plural)
                                         self.show_side(Side.A, row, unit_count, a_unit, [b_unit], False, state, plural)
@@ -492,9 +495,11 @@ class PoDiff(object) :
                                         state = UnitState.RESOLVED | UnitState.MODE_MERGE | UnitState.USED_A
                                         resolved_from_a += 1
                                         if (merge_unit is None) :
-                                            merge_unit = self.init_unit(mergeStore, b_unit)
-                                        if (plural == 0) : merge_unit.merge(a_unit, overwrite, comments)
-                                        else : self.set_plural(merge_unit, a_unit, plural)
+                                            merge_unit = self.init_unit(mergeStore, a_unit)
+                                        if (plural == 0 and not merge_unit.hasplural()) :
+                                            merge_unit.merge(a_unit, overwrite, comments)
+                                        else :
+                                            self.set_plural(merge_unit, a_unit, plural)
                                         self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit], False, state, plural)
                                         self.show_side(Side.A, row, unit_count, a_unit, [base_unit], False, state, plural)
                                         self.show_side(Side.B, row, unit_count, b_unit, [base_unit, a_unit], False, state, plural)
@@ -506,8 +511,13 @@ class PoDiff(object) :
                                         self.unresolved.append(row)
                                         if (merge_unit is None) :
                                             merge_unit = self.init_unit(mergeStore, base_unit)
-                                        if (plural == 0) : merge_unit.merge(base_unit, overwrite, comments)
-                                        else : self.set_plural(merge_unit, base_unit, plural)
+                                        # Don't use merge if in case there is a plural, it
+                                        # may remove the multistring in some implementations
+                                        if (plural == 0 and not merge_unit.hasplural()) :
+                                            merge_unit.merge(base_unit, overwrite, comments)
+                                        else :
+                                            self.set_plural(merge_unit, base_unit, plural)
+
                                         self.show_side(Side.BASE, row, unit_count, base_unit, [a_unit, b_unit], False, state, plural)
                                         self.show_side(Side.A, row, unit_count, a_unit, [base_unit, b_unit], False, state, plural)
                                         self.show_side(Side.B, row, unit_count, b_unit, [base_unit, a_unit], False, state, plural)
@@ -586,7 +596,7 @@ class PoDiff(object) :
                     state = UnitState.MODE_MERGE | UnitState.USED_A
                     if ambiguous_plural : state |= UnitState.AMBIGUOUS
                     else : state |= UnitState.RESOLVED
-                    if (plural == 0) :
+                    if (plural == 0 and not merge_unit.hasplural()) :
                         merge_unit.merge(a_unit, overwrite, comments)
                     else :
                         self.set_plural(merge_unit, a_unit, plural)
