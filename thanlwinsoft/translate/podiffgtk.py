@@ -23,6 +23,7 @@ import pango
 import sys
 import os.path
 import gettext
+import collections
 import ConfigParser
 from translate.misc.multistring import multistring
 import translate.storage.factory
@@ -33,6 +34,7 @@ from textdiff import find_matches
 GETTEXT_DOMAIN='podiff'
 translation = gettext.install(GETTEXT_DOMAIN, unicode=1)
 
+UnitPos = collections.namedtuple("UnitPos", "side row")
 
 class PoUnitData(object) :
     CONTEXT, SOURCE, TARGET = (0, 1, 2)
@@ -104,7 +106,11 @@ class PoUnitGtk(object) :
         self.target_buffer.get_tag_table().add(self.edit_tag)
         self.target_buffer.set_text("Target")
         self.target.set_buffer(self.target_buffer)
-        self.target.set_editable(True)
+        # in merge mode, only allow editing on merge file
+        if (state & UnitState.MODE_DIFF) or side == Side.MERGE :
+            self.target.set_editable(True)
+        else :
+            self.target.set_editable(False)
         self.target.show()
         self.context = gtk.TextView()
         self.context_buffer = gtk.TextBuffer()
@@ -269,40 +275,54 @@ class PoUnitGtk(object) :
             row = PoUnitGtk.po_diff.unresolved[row + PoUnitGtk.po_diff.prev_page - 1]
         else :
             row += PoUnitGtk.po_diff.prev_page - 1
-        return (side, row)
+        return UnitPos(side, row)
 
     def copy_button_release_event_cb(self, widget, data=None) :
         (side, row) = self.find_frame_pos(widget)
         if (self.po_diff is not None) :
-            poUnit = self.po_diff.unit_dict[(side, row)]
-            self.po_diff.merge_from(side, row, poUnit.index, poUnit.unit, poUnit.plural)
+            po_unit = self.po_diff.unit_dict[(side, row)]
+            self.po_diff.merge_from(side, row, po_unit.index, po_unit.unit, po_unit.plural)
     
     def insert_text_event_cb(self, textbuffer, iter, text, length, user_param1=None) :
         if self.unit_change : return
         (side, row) = self.find_frame_pos(user_param1)
-        poUnit = self.po_diff.unit_dict[(side, row)]
+        unit_data = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
-        poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
+        updated_text = textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter())
+        self.update_unit_target(unit_data, updated_text)
         self.po_diff.on_dirty()
         # event is before insert has happened
 #        end_iter = iter.copy()
 #        end_iter.forward_chars(length)
 #        textbuffer.apply_tag_by_name("edit", iter, iter)
     
+    def update_unit_target(self, unit_data, updated_text):
+        if unit_data.unit.hasplural():
+            plurals = unit_data.unit.gettarget().strings
+            if (unit_data.plural < len(plurals)):
+                plurals[unit_data.plural] = updated_text
+            else :
+                plurals.append(updated_text)
+            unit_data.unit.settarget(multistring(plurals))
+        else:
+            unit_data.unit.settarget(updated_text)
+    
     def changed_event_cb(self, textbuffer, user_param1=None) :
         if self.unit_change : return
         (side, row) = self.find_frame_pos(user_param1)
-        poUnit = self.po_diff.unit_dict[(side, row)]
+        unit_data = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
-        poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
+        updated_text = textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter())
+        self.update_unit_target(unit_data, updated_text)
         self.po_diff.on_dirty()
         
     def delete_range_event_cb(self, textbuffer, start, end, user_param1=None) :
         if self.unit_change : return
         (side, row) = self.find_frame_pos(user_param1)
-        poUnit = self.po_diff.unit_dict[(side, row)]
+        unit_data = self.po_diff.unit_dict[(side, row)]
         self.po_diff.dirty[side] = True
-        poUnit.unit.settarget(textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter()))
+        updated_text = textbuffer.get_text(textbuffer.get_start_iter(), textbuffer.get_end_iter())
+        self.update_unit_target(unit_data, updated_text)
         self.po_diff.on_dirty()
         # the event seems to be before the change, so we can't modify it
         #textbuffer.apply_tag_by_name("edit", start, end)
@@ -323,10 +343,6 @@ class PoUnitGtk(object) :
             bound = text_buffer.get_iter_at_offset(offset + index)
         text_buffer.select_range(ins, bound)
         side, row = PoUnitGtk.find_frame_pos(view)
-        self.po_diff.builder.get_object("toolbuttonFilterResolved").set_active(False)
-        sb = self.po_diff.builder.get_object("unitVscrollbar")
-        if (sb.get_value() > row or sb.get_value() + PoDiffGtk.UNITS_PER_PAGE <= row) :
-            sb.set_value(row)
         view.grab_focus()
         if view.get_editable() :
             self.po_diff.builder.get_object("replaceButton").set_sensitive(True)
@@ -347,10 +363,18 @@ class PoUnitGtk(object) :
             bounds = [text_buffer.get_start_iter(), text_buffer.get_end_iter()] 
             if view.is_focus() :
                 started = True
-                if (backwards) :
-                    bounds[1] = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+                select_bound = text_buffer.get_iter_at_mark(text_buffer.get_selection_bound())
+                insert_bound = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+                if (select_bound.compare(insert_bound) < 0) :
+                    left_bound = select_bound
+                    right_bound = insert_bound
                 else :
-                    bounds[0] = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+                    left_bound = insert_bound
+                    right_bound = select_bound
+                if (backwards) :
+                    bounds[1] = left_bound
+                else :
+                    bounds[0] = right_bound
             if not started : continue
             if self.find_in_buffer(view, text_buffer, text, case_sensitive, backwards, bounds) : return True
         return False
@@ -760,16 +784,19 @@ http://www.gnu.org/licenses/"""))
     def make_row_visible(self, row) :
         """Make the specified row visible, scrolling the view if needed. 
         Returns index of row in current view."""
+        sb = self.builder.get_object("unitVscrollbar")
         if self.is_filtered() :
             filtered_index = self.unresolved.index(row)
             visible = filtered_index - self.prev_page
             if (visible < 0 or visible >= PoDiffGtk.UNITS_PER_PAGE) :
-                self.show_units(filtered_index)
+                #self.show_units(filtered_index)
+                sb.set_value(filtered_index)
                 visible = 0
         else :
             visible = row - self.prev_page
             if (visible < 0 or visible >= PoDiffGtk.UNITS_PER_PAGE) :
-                self.show_units(row)
+                #self.show_units(row)
+                sb.set_value(row)
                 visible = 0
         return visible
 
@@ -817,34 +844,37 @@ http://www.gnu.org/licenses/"""))
                 return True
                 
         while (True) :
-            if (side, row)  in self.unit_dict :
-                unit_data = self.unit_dict[(side, row)]
-                found = unit_data.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards)
-                if found is not None:
-                    # find or activate the unit
-                    visible_row = self.make_row_visible(row)
-                    unit_frame = self.unit_frames[(side, visible_row)]
-                    # TODO avoid doing the search twice, since unit_data.find gives us the position info
-                    if unit_frame.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
-                        # print "Found at ", text, side, row
-                        # the word was found, so add it to combo list of previous searches
-                        if search_combo is not None:
-                            ai = search_combo.get_active_iter()
-                            if ai is None :
-                                search_combo.prepend_text(text)
-                                search_combo.set_active_iter(search_combo.get_model().get_iter_first())
-                        return True
-                    else :
-                        print "Not found in PoUnitGtk at " + str(side) + "," + str(row) 
-                        #assert(False) # shoundn't happen
-            side += step
-            if (side < 0) :
-                side = Side.MERGE
-                row += step
-            else :
-                if side > Side.MERGE :
-                    side = Side.BASE
+            if not self.is_filtered() or row in self.unresolved :
+                if (side, row)  in self.unit_dict :
+                    unit_data = self.unit_dict[(side, row)]
+                    found = unit_data.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards)
+                    if found is not None:
+                        # find or activate the unit
+                        visible_row = self.make_row_visible(row)
+                        unit_frame = self.unit_frames[(side, visible_row)]
+                        # TODO avoid doing the search twice, since unit_data.find gives us the position info
+                        if unit_frame.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
+                            # print "Found at ", text, side, row
+                            # the word was found, so add it to combo list of previous searches
+                            if search_combo is not None:
+                                ai = search_combo.get_active_iter()
+                                if ai is None :
+                                    search_combo.prepend_text(text)
+                                    search_combo.set_active_iter(search_combo.get_model().get_iter_first())
+                            return True
+                        else :
+                            pass
+                            # this occurs first iteration if the text buffer cursor is beyond the position where
+                            # the search text was found by unit_frame.find
+                side += step
+                if (side < 0) :
+                    side = Side.MERGE
                     row += step
+                else :
+                    if side > Side.MERGE :
+                        side = Side.BASE
+                        row += step
+            else : row += step
             if (row < 0) : row = self.unit_count - 1
             if (row >= self.unit_count) : row = 0
             focus = None
@@ -874,7 +904,13 @@ http://www.gnu.org/licenses/"""))
             if unicode(selected) == text :
 #                text_buffer.delete_selection(True, True)
                 text_buffer.delete_interactive(start, end, True)
+                start_iter = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+                replace_mark = text_buffer.create_mark("replace_start", start_iter, True)
                 text_buffer.insert_interactive_at_cursor(replacement, True)
+                start_iter = text_buffer.get_iter_at_mark(replace_mark)
+                end_iter = text_buffer.get_iter_at_mark(text_buffer.get_insert())
+                text_buffer.delete_mark(replace_mark)
+                text_buffer.select_range(start_iter, end_iter)
                 if replace_combo is not None :
                     ai = replace_combo.get_active_iter()
                     if ai is None :

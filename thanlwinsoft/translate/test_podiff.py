@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright 2009 Keith Stribley http://www.thanlwinsoft.org/ 
+# Copyright 2010 Keith Stribley http://www.thanlwinsoft.org/ 
 #
 # This program is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -170,16 +170,21 @@ class TestPoDiff(PoDiff) :
         self.fileB = "testB.po"
         self.fileMerge = "testMerge.po"
         self.expected_results = None
+
     def set_diff_titles(self, a, b):
+        """Call back - check results against expected"""
         assert(a == self.fileA or a == self.fileA.replace(".po", ".xlf"))
         assert(b == self.fileB or b == self.fileB.replace(".po", ".xlf"))
+
     def set_merge_titles(self, base, a, b, merge) :
+        """Call back - check results against expected"""
         assert(base == self.fileBase or base == self.fileBase.replace(".po", ".xlf"))
         assert(merge == self.fileMerge or merge == self.fileMerge.replace(".po", ".xlf"))
         assert(a == self.fileA or a == self.fileA.replace(".po", ".xlf"))
         assert(b == self.fileB or b == self.fileB.replace(".po", ".xlf"))
         
     def on_dirty(self) :
+        """Call back - check results against expected"""
         assert(self.dirty[0] == False)
         assert(self.dirty[1] == False)
         assert(self.dirty[2] == False)
@@ -187,6 +192,7 @@ class TestPoDiff(PoDiff) :
             assert(self.dirty[3] == True)
 
     def show_side(self, side, row, index, unit, cf_unit, modified, state, plural) :
+        """Call back - check results against expected"""
         sys.stderr.write("ID:[{0}] Side {1} Plural {2} State {3}\n".format(unit.getid(), side, plural, state))
         if (plural == 0) :
             test_key = unicode(unit.source)
@@ -308,10 +314,9 @@ class TestPoDiff(PoDiff) :
         self.expected_results = expectedXliffMergeResults
         self.merge(self.fileBase.replace(".po", ".xlf"), self.fileA.replace(".po", ".xlf"), self.fileB.replace(".po", ".xlf"), self.fileMerge.replace(".po", ".xlf"))
         self.expected_results = None
-                    
 
     def set_total_units(self, row_count) :
+        """Callback - Check number of rows matches expected"""
         self.unit_count = row_count
         assert(row_count == len(self.expected_results))
-
 
