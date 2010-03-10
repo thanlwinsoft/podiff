@@ -4,4 +4,6 @@ syntax:glob
 *.po
 Longest_common_subsequence_problem_files*
 tmp
+.metadata
+build
 

@@ -51,7 +51,9 @@ expectedPoDiffResults = {
     u"test22 plural" : DiffResult(True, True, 1, 0x100),
     u"test23 plural" : DiffResult(True, False, 1, 0x100),
     u"test24 plural" : DiffResult(False, True, 1, 0x100),
-    u"test25 plural" : DiffResult(True, True, 1, 0x100)
+    u"test25 plural" : DiffResult(True, True, 1, 0x100),
+    u"test27 single change in both" : DiffResult(True, True, 0, 0x100),
+    u"test27 plural change in both" : DiffResult(True, True, 1, 0x100)
 }
 
 expectedPoMergeResults = {
@@ -87,9 +89,16 @@ expectedPoMergeResults = {
     u"test23 plural" : MergeResult(True, True, False, 1, 0x205),
 #    u"test24 single only" : MergeResult(True, True, True, 0, 0x200),
     u"test24 plural" : MergeResult(True, False, True, 1, 0x209),
-#    u"test25 single only" : MergeResult(True, True, True, 0, 0x200),
     u"test25 plural" : MergeResult(True, True, True, 1, 0x202),
     u"test26 - very very very very very very very very very very very very very very very very very  long" : MergeResult(True, False, False, 0, 0x201),
+    u"test27 single change in both" : MergeResult(True, True, True, 0, 0x202),
+    u"test27 plural change in both" : MergeResult(True, True, True, 1, 0x202),
+}
+
+expectedMergeResults = {
+    u"test4 modify in A & B" : MergeResult(True, True, True, 0, 0x201),
+    u"test27 single change in both" : MergeResult(True, True, True, 0, 0x201),
+    u"test27 plural change in both" : MergeResult(True, True, True, 1, 0x201),
 }
 
 expectedXliffDiffResults = {
@@ -217,6 +226,53 @@ class TestPoDiff(PoDiff) :
         self.merge(self.fileBase, self.fileA, self.fileB, self.fileMerge)
         self.expected_results = None
 
+    def test_merge_from(self):
+        """Test merge from when selecting an one of the alternative translations."""
+        assert(self.stores[Side.LEFT] is not None)
+        assert(self.stores[Side.RIGHT] is not None)
+        assert(self.stores[Side.BASE] is not None)
+        assert(self.stores[Side.MERGE] is not None)
+        self.expected_results = expectedMergeResults
+        from_row = -1 # not needed currently, except for show_side call back
+        unit_index = -1 # not needed currently, except for show_side call back
+        #test a single entry
+        plural = 0
+        test_id = "test4 modify in A & B"
+        a_unit = self.stores[Side.LEFT].findid(test_id)
+        b_unit = self.stores[Side.RIGHT].findid(test_id)
+        # resolve using a
+        self.merge_from(Side.LEFT, from_row, unit_index, a_unit, plural)
+        base_unit = self.stores[Side.BASE].findid(test_id)
+        result = self.stores[Side.MERGE].findid(test_id)
+        assert(unicode(a_unit.gettarget()) == unicode(result.gettarget()))
+        assert(unicode(b_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(base_unit.gettarget()) != unicode(result.gettarget()))
+        # resolve using b instead
+        self.merge_from(Side.RIGHT, from_row, unit_index, b_unit, plural)
+        base_unit = self.stores[Side.BASE].findid(test_id)
+        assert(unicode(b_unit.gettarget()) == unicode(result.gettarget()))
+        assert(unicode(a_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(base_unit.gettarget()) != unicode(result.gettarget()))
+        # revert to base
+        self.merge_from(Side.BASE, from_row, unit_index, base_unit, plural)
+        assert(unicode(a_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(b_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(base_unit.gettarget()) == unicode(result.gettarget()))
+
+        # test a plural entry
+        test_id = "test27 single change in both"#test27 plural change in both"
+        a_unit = self.stores[Side.LEFT].findid(test_id)
+        b_unit = self.stores[Side.RIGHT].findid(test_id)
+        # single from a, single from b
+        self.merge_from(Side.LEFT, from_row, unit_index, a_unit, 0)
+        self.merge_from(Side.RIGHT, from_row, unit_index, b_unit, 1)
+        result = self.stores[Side.MERGE].findid(test_id)
+        assert(unicode(a_unit.gettarget()) == unicode(result.gettarget()))
+        assert(unicode(b_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(a_unit.gettarget().strings[1]) != unicode(result.gettarget().strings[1]))
+        assert(unicode(b_unit.gettarget().strings[1]) == unicode(result.gettarget().strings[1]))
+        self.expected_results = None
+
     def test_xliff_diff(self):
         """Test comparsion between 2 files"""
         self.test = "Diff"
@@ -230,6 +286,7 @@ class TestPoDiff(PoDiff) :
         self.expected_results = expectedXliffMergeResults
         self.merge(self.fileBase.replace(".po", ".xlf"), self.fileA.replace(".po", ".xlf"), self.fileB.replace(".po", ".xlf"), self.fileMerge.replace(".po", ".xlf"))
         self.expected_results = None
+                    
 
     def set_total_units(self, row_count) :
         self.unit_count = row_count

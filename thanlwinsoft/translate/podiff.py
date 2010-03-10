@@ -60,7 +60,7 @@ class PoDiff(object) :
 #       Using storage.findid treats an entry with the same source with and
 #       without plurals as different, the code below doesn't
         if isinstance(unit, translate.storage.pocommon.pounit) and not isinstance(unit, translate.storage.poxliff.PoXliffFile):
-            if unit.source not in self.source_dict :
+            if unicode(unit.source) not in self.source_dict :
                 return None
             context_dict = self.source_dict[unicode(unit.getsource())]
             ctxt = unit.getcontext()
@@ -74,18 +74,24 @@ class PoDiff(object) :
         self.source_dict = {}
         for i in range(len(self.stores)) :
             if self.stores[i] is None : continue
-            for unit in self.stores[i].unit_iter():
-                if unicode(unit.getsource()) in self.source_dict :
-                    context = self.source_dict[unicode(unit.getsource())]
-                else :
-                    context = {}
-                if unicode(unit.getcontext()) in context :
-                    units = context[unicode(unit.getcontext())]
-                else :
-                    units = [None, None, None, None]
-                units[i] = unit
-                context[unicode(unit.getcontext())] = units
-                self.source_dict[unicode(unit.getsource())] = context
+            self.index_side(i)
+            
+    def add_unit_to_index(self, side, unit) :
+        if unicode(unit.getsource()) in self.source_dict :
+            context = self.source_dict[unicode(unit.getsource())]
+        else :
+            context = {}
+        if unicode(unit.getcontext()) in context :
+            units = context[unicode(unit.getcontext())]
+        else :
+            units = [None, None, None, None]
+        units[side] = unit
+        context[unicode(unit.getcontext())] = units
+        self.source_dict[unicode(unit.getsource())] = context
+
+    def index_side(self, side) :
+        for unit in self.stores[side].unit_iter():
+            self.add_unit_to_index(side, unit)
         
     def open_storage(self, filename) :
         """Opens translation storage from file. First of all it tries to find a storage by the file extension, 
@@ -202,8 +208,9 @@ class PoDiff(object) :
         self.set_total_units(row)
         sys.stderr.write('\n')
         print >> sys.stderr, msg
-        
+
     def merge_from(self, from_side, from_row, unit_index, from_unit, plural, to_side=None) :
+        """Merges the data in from_unit into the specified to_side or the merge file"""
         if to_side is None:
             if len(self.stores) == 4 :
                 to_side = Side.MERGE
@@ -212,9 +219,18 @@ class PoDiff(object) :
                 if from_side == Side.RIGHT : to_side = Side.LEFT
                 else : to_side = Side.RIGHT
                 to_unit = self.find_unit(to_side, from_unit)
+
         if (to_unit is None) :
             to_unit = type(from_unit)(from_unit.source)
             self.stores[to_side].addunit(to_unit)
+            # add to storage index
+            if from_unit.getcontext() is not None :
+                if (hasattr(from_unit, "msgctxt")) :
+                    to_unit.msgctxt = from_unit.msgctxt
+            self.add_unit_to_index(self, side, to_unit)
+        else :
+            if (hasattr(from_unit, "msgctxt")) :
+                to_unit.msgctxt = from_unit.msgctxt
 
         # this might need to be customized for each supported type
         if (self.copy_notes) :
@@ -228,9 +244,7 @@ class PoDiff(object) :
                         new_notes.append(note)
                 to_unit.addnote('\n'.join(new_notes), origin)
 
-        if (hasattr(from_unit, "msgctxt")) :
-            to_unit.msgctxt = from_unit.msgctxt
-        if (plural == 0) :
+        if (not to_unit.hasplural()) :
             to_unit.settarget(from_unit.gettarget())
         else :
             new_target = to_unit.gettarget()
@@ -261,6 +275,7 @@ class PoDiff(object) :
                 self.show_status(msg)
                 
     def set_plural(self, target_unit, source_unit, plural) :
+        """Copies the source and target data from source_unit for the specified plural into target_unit"""
         new_target = target_unit.gettarget()
         if (source_unit is None) :
             if len(new_target.strings) > plural :
@@ -286,6 +301,7 @@ class PoDiff(object) :
         target_unit.settarget(new_target)
 
     def init_unit(self, store, base_unit) :
+        """Initializes a new unit in store based on the base_unit from another store"""
         assert(base_unit is not None)
         merge_unit = store.UnitClass.buildfromunit(base_unit)
         store.addunit(merge_unit)
@@ -301,6 +317,7 @@ class PoDiff(object) :
         return merge_unit
 
     def merge(self, base, a, b, merge) :
+        """Merge the data in files a and b with a common base into merge file"""
         self.clear()
         self.stores = []
         self.unresolved = []
@@ -661,6 +678,7 @@ class PoDiff(object) :
                     self.show_side(Side.B, row, unit_count, b_unit, None, False, state, plural)
                     self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                     row+=1
+        self.index_side(Side.MERGE)
         self.dirty[Side.MERGE] = True
         self.on_dirty()
         msg = _("{0} unresolved; {1} resolved from A; {2} resolved from B; {3} new in A; {4} new in B; {5} removed").format(len(self.unresolved), resolved_from_a, resolved_from_b, new_in_a, new_in_b, removed)
