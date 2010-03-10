@@ -97,6 +97,7 @@ expectedPoMergeResults = {
 
 expectedMergeResults = {
     u"test4 modify in A & B" : MergeResult(True, True, True, 0, 0x201),
+    (u"test19 with context", u"modify in both") : MergeResult(True, True, True, 0, 0x201),
     u"test27 single change in both" : MergeResult(True, True, True, 0, 0x201),
     u"test27 plural change in both" : MergeResult(True, True, True, 1, 0x201),
 }
@@ -238,18 +239,39 @@ class TestPoDiff(PoDiff) :
         #test a single entry
         plural = 0
         test_id = "test4 modify in A & B"
+        base_unit = self.stores[Side.BASE].findid(test_id)
         a_unit = self.stores[Side.LEFT].findid(test_id)
         b_unit = self.stores[Side.RIGHT].findid(test_id)
         # resolve using a
         self.merge_from(Side.LEFT, from_row, unit_index, a_unit, plural)
-        base_unit = self.stores[Side.BASE].findid(test_id)
         result = self.stores[Side.MERGE].findid(test_id)
         assert(unicode(a_unit.gettarget()) == unicode(result.gettarget()))
         assert(unicode(b_unit.gettarget()) != unicode(result.gettarget()))
         assert(unicode(base_unit.gettarget()) != unicode(result.gettarget()))
         # resolve using b instead
         self.merge_from(Side.RIGHT, from_row, unit_index, b_unit, plural)
+        assert(unicode(b_unit.gettarget()) == unicode(result.gettarget()))
+        assert(unicode(a_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(base_unit.gettarget()) != unicode(result.gettarget()))
+        # revert to base
+        self.merge_from(Side.BASE, from_row, unit_index, base_unit, plural)
+        assert(unicode(a_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(b_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(base_unit.gettarget()) == unicode(result.gettarget()))
+
+        # test entry with context
+        test_id = "modify in both\04test19 with context"
         base_unit = self.stores[Side.BASE].findid(test_id)
+        a_unit = self.stores[Side.LEFT].findid(test_id)
+        b_unit = self.stores[Side.RIGHT].findid(test_id)
+        # resolve using a
+        self.merge_from(Side.LEFT, from_row, unit_index, a_unit, plural)
+        result = self.stores[Side.MERGE].findid(test_id)
+        assert(unicode(a_unit.gettarget()) == unicode(result.gettarget()))
+        assert(unicode(b_unit.gettarget()) != unicode(result.gettarget()))
+        assert(unicode(base_unit.gettarget()) != unicode(result.gettarget()))
+        # resolve using b instead
+        self.merge_from(Side.RIGHT, from_row, unit_index, b_unit, plural)
         assert(unicode(b_unit.gettarget()) == unicode(result.gettarget()))
         assert(unicode(a_unit.gettarget()) != unicode(result.gettarget()))
         assert(unicode(base_unit.gettarget()) != unicode(result.gettarget()))

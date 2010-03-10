@@ -472,6 +472,9 @@ class PoDiffGtk (PoDiff):
         #sb.set_range(0, row_count)
         #sb.set_value(0)
         self.show_units(0)
+        
+    def get_unit_count(self):
+        return self.unit_count;
     
     def hide_units(self, filter_resolved = None) :
         pass
@@ -571,7 +574,7 @@ class PoDiffGtk (PoDiff):
     def init_unit_frames(self, cols, mode) :
 #        self.diff_table.foreach(self.diff_table.remove)
         for unit_frame in self.unit_frames.itervalues() :
-            self.diff_table.remove(unit_frame)
+            self.diff_table.remove(unit_frame.frame)
         self.unit_frames = {}
         for col in cols:
             for row in range(0, PoDiffGtk.UNITS_PER_PAGE) :

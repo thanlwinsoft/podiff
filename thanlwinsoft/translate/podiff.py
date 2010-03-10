@@ -23,6 +23,7 @@ import codecs
 import io
 import translate.storage.factory
 import translate.storage.pocommon
+import translate.storage.cpo
 import translate.storage.poxliff
 from translate.misc.multistring import multistring
 
@@ -223,11 +224,18 @@ class PoDiff(object) :
         if (to_unit is None) :
             to_unit = type(from_unit)(from_unit.source)
             self.stores[to_side].addunit(to_unit)
-            # add to storage index
+            # Setting the context is not very generic
             if from_unit.getcontext() is not None :
-                if (hasattr(from_unit, "msgctxt")) :
-                    to_unit.msgctxt = from_unit.msgctxt
-            self.add_unit_to_index(self, side, to_unit)
+                if (hasattr(to_unit, "msgctxt")) :
+                    to_unit.msgctxt = from_unit.getcontext()
+                if (hasattr(to_unit, "_msgctxt")) :
+                    to_unit._msgctxt = from_unit.getcontext()
+                if isinstance(to_unit, translate.storage.cpo.pounit):
+                    translate.storage.cpo.gpo.po_message_set_msgctxt(from_unit._gpo_message, base_unit.getcontext())
+                assert (from_unit.getcontext() == to_unit.getcontext())
+            # add to storage index
+            self.add_unit_to_index(to_side, to_unit)
+            self.stores[to_side].makeindex() # reindex
         else :
             if (hasattr(from_unit, "msgctxt")) :
                 to_unit.msgctxt = from_unit.msgctxt
@@ -244,15 +252,7 @@ class PoDiff(object) :
                         new_notes.append(note)
                 to_unit.addnote('\n'.join(new_notes), origin)
 
-        if (not to_unit.hasplural()) :
-            to_unit.settarget(from_unit.gettarget())
-        else :
-            new_target = to_unit.gettarget()
-            if to_unit.hasplural():
-                while (len(new_target.strings) < plural + 1) :
-                    new_target.strings.append(u"")
-                new_target.strings[plural] = from_unit.gettarget().strings[plural]
-            to_unit.settarget(new_target)
+        self.set_plural(to_unit, from_unit, plural)
         if (callable(to_unit.markfuzzy)) :
             to_unit.markfuzzy(False)
         for loc in from_unit.getlocations() :
@@ -276,40 +276,48 @@ class PoDiff(object) :
                 
     def set_plural(self, target_unit, source_unit, plural) :
         """Copies the source and target data from source_unit for the specified plural into target_unit"""
-        new_target = target_unit.gettarget()
-        if (source_unit is None) :
-            if len(new_target.strings) > plural :
-                new_target.strings[plural] = u""
-            return
-        assert(plural == 0 or source_unit.hasplural())
-        if not source_unit.hasplural() and plural == 0:
-            if target_unit.hasplural() :
-                target_unit.source.strings[0] = source_unit.getsource()
-                new_target.strings[0] = source_unit.gettarget()
-            else :
-                target_unit.setsource(source_unit.getsource())
-                new_target = source_unit.gettarget()
+        # need to use multistring
+        # the base type unicode is immutable, so need to be careful how we create it
+        if hasattr(target_unit.gettarget(), "strings") :
+            target_list = list(target_unit.gettarget().strings)
         else :
-            if not target_unit.hasplural() or not isinstance(target_unit.getsource(), multistring):
-                target_unit.setsource(source_unit.getsource())
-            if not hasattr(new_target, "strings") :
-                new_target = multistring(new_target)
-            while (len(new_target.strings) <= plural) :
-                new_target.strings.append(u"")
-            assert(plural < len(source_unit.gettarget().strings))
-            new_target.strings[plural] = source_unit.gettarget().strings[plural]
-        target_unit.settarget(new_target)
+            target_list = [ target_unit.gettarget() ]
+        while (len(target_list) <= plural) :
+            target_list.append(u"")
+        if source_unit.hasplural() :
+            target_list[plural] = source_unit.gettarget().strings[plural]
+        else :
+            assert(plural == 0)
+            target_list[plural] = source_unit.gettarget()
+        target_unit.settarget(multistring(target_list))
+        # now set the source text if needed
+        assert(unicode(source_unit.getsource()) == unicode(target_unit.getsource()))
+        if source_unit.hasplural() :
+            if not target_unit.hasplural():
+                source_unit.setsource(multistring(source_unit.getsource().strings))
+            else :
+                assert(source_unit.getsource() == target_unit.getsource())
 
     def init_unit(self, store, base_unit) :
         """Initializes a new unit in store based on the base_unit from another store"""
         assert(base_unit is not None)
-        merge_unit = store.UnitClass.buildfromunit(base_unit)
+        if (store.UnitClass == translate.storage.cpo.pounit) :
+            # HACK workaround for buildfromunit because with cpo units become
+            # linked between stores
+            merge_unit = (store.UnitClass)(base_unit.getsource())
+            merge_unit.merge(base_unit, True, True, True)
+            translate.storage.cpo.gpo.po_message_set_msgctxt(merge_unit._gpo_message, base_unit.getcontext())
+        else :
+            merge_unit = store.UnitClass.buildfromunit(base_unit)
+        #merge_unit = store.UnitClass.__new__(store.UnitClass, base_unit.getsource())
+        #merge_unit.merge(base_unit, True, True, True)
         store.addunit(merge_unit)
-        if (base_unit.getcontext() is not None and len(base_unit.getcontext()) > 0) :
+        if (base_unit.getcontext() is not None and (base_unit.getcontext() != merge_unit.getcontext())) :
             if hasattr(merge_unit, "msgctxt"):
                 merge_unit.msgctxt = base_unit.msgctxt
             else :
                 sys.stderr.write("Warning: context ignored for this file format\n")
+                assert(False)
         # id isn't transferred automatically in xliff
         if (merge_unit.getid() != base_unit.getid() and hasattr(merge_unit, "setid")) :
             merge_unit.setid(base_unit.getid())
@@ -679,6 +687,7 @@ class PoDiff(object) :
                     self.show_side(Side.MERGE, row, unit_count, merge_unit, None, False, state, plural)
                     row+=1
         self.index_side(Side.MERGE)
+        self.stores[Side.MERGE].makeindex()
         self.dirty[Side.MERGE] = True
         self.on_dirty()
         msg = _("{0} unresolved; {1} resolved from A; {2} resolved from B; {3} new in A; {4} new in B; {5} removed").format(len(self.unresolved), resolved_from_a, resolved_from_b, new_in_a, new_in_b, removed)
