@@ -783,6 +783,9 @@ http://www.gnu.org/licenses/"""))
         use_translation = self.builder.get_object("checkbuttonTranslation").get_active()
         case_sensitive = self.builder.get_object("checkbuttonCase").get_active()
         backwards = self.builder.get_object("checkbuttonBackwards").get_active()
+        return self.do_search(text, use_context, use_msgid, use_translation, case_sensitive, backwards, search_combo)
+
+    def do_search(self, text, use_context, use_msgid, use_translation, case_sensitive, backwards, search_combo):
         if not (use_context or use_msgid or use_translation) :
             self.show_warning(_("Nothing to search. Please select the fields which you want to search."))
             return False
@@ -806,10 +809,11 @@ http://www.gnu.org/licenses/"""))
             unit_frame = self.unit_frames[(side, visible)]
             if unit_frame.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
                 # the word was found, so add it to combo list of previous searches
-                ai = search_combo.get_active_iter()
-                if ai is None :
-                    search_combo.prepend_text(text)
-                    search_combo.set_active_iter(search_combo.get_model().get_iter_first())
+                if search_combo is not None:
+                    ai = search_combo.get_active_iter()
+                    if ai is None :
+                        search_combo.prepend_text(text)
+                        search_combo.set_active_iter(search_combo.get_model().get_iter_first())
                 return True
                 
         while (True) :
@@ -824,10 +828,11 @@ http://www.gnu.org/licenses/"""))
                     if unit_frame.find(text, use_context, use_msgid, use_translation, case_sensitive, backwards, focus) :
                         # print "Found at ", text, side, row
                         # the word was found, so add it to combo list of previous searches
-                        ai = search_combo.get_active_iter()
-                        if ai is None :
-                            search_combo.prepend_text(text)
-                            search_combo.set_active_iter(search_combo.get_model().get_iter_first())
+                        if search_combo is not None:
+                            ai = search_combo.get_active_iter()
+                            if ai is None :
+                                search_combo.prepend_text(text)
+                                search_combo.set_active_iter(search_combo.get_model().get_iter_first())
                         return True
                     else :
                         print "Not found in PoUnitGtk at " + str(side) + "," + str(row) 
@@ -853,6 +858,9 @@ http://www.gnu.org/licenses/"""))
         text = unicode(search_combo.get_active_text())
         replacement = unicode(replace_combo.get_active_text())
         case_sensitive = self.builder.get_object("checkbuttonCase").get_active()
+        return self.do_replace(text, replacement, case_sensitive, replace_combo)
+        
+    def do_replace(self, text, replacement, case_sensitive, replace_combo):
         if not case_sensitive : text = text.lower()
         focus = self.win.get_focus()
         from_unit = PoUnitGtk.find_frame_pos(focus)
@@ -860,14 +868,18 @@ http://www.gnu.org/licenses/"""))
             text_buffer = focus.get_buffer()
             start = text_buffer.get_iter_at_mark(text_buffer.get_insert())
             end = text_buffer.get_iter_at_mark(text_buffer.get_selection_bound())
-            if unicode(text_buffer.get_text(start, end)) == text :
+            selected = text_buffer.get_text(start, end)
+            if not case_sensitive :
+                selected = selected.lower()
+            if unicode(selected) == text :
 #                text_buffer.delete_selection(True, True)
                 text_buffer.delete_interactive(start, end, True)
                 text_buffer.insert_interactive_at_cursor(replacement, True)
-                ai = replace_combo.get_active_iter()
-                if ai is None :
-                    replace_combo.prepend_text(replacement)
-                    replace_combo.set_active_iter(replace_combo.get_model().get_iter_first())    
+                if replace_combo is not None :
+                    ai = replace_combo.get_active_iter()
+                    if ai is None :
+                        replace_combo.prepend_text(replacement)
+                        replace_combo.set_active_iter(replace_combo.get_model().get_iter_first())    
                 return True
         return False
 
