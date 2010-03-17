@@ -1,0 +1,111 @@
+#. extracted from dbaccess/source/ui/app.oo
+msgid ""
+msgstr ""
+"Project-Id-Version: podiff-test\n"
+"Report-Msgid-Bugs-To: http://www.thanlwinsoft.org/\n"
+"POT-Creation-Date: 2009-12-31 21:25+0000\n"
+"PO-Revision-Date: 2009-12-31 15:00+0000\n"
+"Last-Translator: Khaing Zar Win <kyawkhaingzarwin@gmail.com>\n"
+"Language-Team: my <devel@thanlwinsoft.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+# Translator comment
+#: test1
+msgid "test1 unchanged"
+msgstr "အစမ် ၁"
+
+# Base
+#: test2
+msgid "test2 modify in A"
+msgstr "အစမ် ၂"
+
+msgid "test3 modify in B"
+msgstr "အစမ် ၃"
+
+msgid "test4 modify in A & B"
+msgstr "အစမ် ၄"
+
+msgid "test5 unchanged"
+msgstr "အစမ် ၅"
+
+msgid "test6 move in A"
+msgstr "အစမ် ၆"
+
+msgid "test7 move in B"
+msgstr "အစမ် ၇"
+
+msgid "test8 move in A, modify in A"
+msgstr "အစမ် ၈"
+
+msgid "test9 move in B, modify in B"
+msgstr "အစမ် ၉"
+
+msgid "test10 move and modify in A and B"
+msgstr "အစမ် ၁၀"
+
+msgid "test14 removed in A and B"
+msgstr "အစမ် ၁၄"
+
+msgid "test15 removed in A"
+msgstr "အစမ် ၁၅"
+
+msgid "test16 removed in B"
+msgstr "အစမ် ၁၆"
+
+msgid "test17 removed in A, modified in B"
+msgstr "အစမ် ၁၇"
+
+msgid "test18 removed in B, modified in A"
+msgstr "အစမ် ၁၈"
+
+# No context
+msgid "test19 with context"
+msgstr "အစမ် ၁၉ မူရင်း"
+
+msgctxt "modify in A"
+msgid "test19 with context"
+msgstr "အစမ် ၁၉"
+
+msgctxt "modify in B"
+msgid "test19 with context"
+msgstr "အစမ် ၁၉"
+
+msgctxt "modify in both"
+msgid "test19 with context"
+msgstr "အစမ် ၁၉"
+
+msgid "test20 single"
+msgid_plural "test20 plural"
+msgstr[0] "အစမ် တစ်ခု"
+msgstr[1] "အစမ်များ"
+
+msgid "test21 single"
+msgid_plural "test21 plural"
+msgstr[0] "အစမ် တစ်ခု"
+msgstr[1] "အစမ်များ"
+
+msgid "test22 single"
+msgid_plural "test22 plural"
+msgstr[0] "အစမ် တစ်ခု"
+msgstr[1] "အစမ်များ"
+
+msgid "test23 single only"
+msgstr "အစမ် တစ်ခု"
+
+msgid "test24 single only"
+msgstr "အစမ် တစ်ခု"
+
+msgid "test25 single only"
+msgstr "အစမ် တစ်ခု"
+
+msgid "test26 - very very very very very very very very very very very very very very very very very  long"
+msgstr "အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။ အရန်ရှေတယ်။"
+
+msgid "test27 single change in both"
+msgid_plural "test27 plural change in both"
+msgstr[0] "အစမ် တစ်ခု"
+msgstr[1] "အစမ်များ"
+
